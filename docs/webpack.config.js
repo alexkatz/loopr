@@ -1,6 +1,6 @@
 const path = require('path');
-const CopyWebpackPlugin = require('copy-webpack-plugin');
-
+const HtmlWebpackPlugin = require('html-webpack-plugin');
+const HtmlStringReplace = require('html-string-replace-webpack-plugin');
 const config = {
     entry: {
         app: ['./src/index.tsx'],
@@ -17,9 +17,21 @@ const config = {
         contentBase: path.resolve(__dirname + '/dist'),
     },
     plugins: [
-        new CopyWebpackPlugin([
-            { from: './index.html', to: './' },
-        ]),
+        new HtmlWebpackPlugin({
+            template: 'index.html',
+            inject: false,
+        }),
+        new HtmlStringReplace({
+            enable: true,
+            patterns: [
+                {
+                    match: /src=".\/dist\/index.js"/g,
+                    replacement: function (match) {
+                        return 'src="index.js"';
+                    }
+                },
+            ]
+        })
     ],
     module: {
         rules: [
