@@ -33138,6 +33138,7 @@ var __extends = (this && this.__extends) || (function () {
 })();
 Object.defineProperty(exports, "__esModule", { value: true });
 var React = __webpack_require__(1);
+var CANVAS_HEIGHT = 200;
 var LooprView = /** @class */ (function (_super) {
     __extends(LooprView, _super);
     function LooprView() {
@@ -33146,13 +33147,49 @@ var LooprView = /** @class */ (function (_super) {
         _this.hydrateChannelData = function (audioBuffer, callback) {
             var leftChannelData = audioBuffer.getChannelData(0);
             var rightChannelData = audioBuffer.getChannelData(1);
-            _this.setState({ leftChannelData: leftChannelData, rightChannelData: rightChannelData }, callback);
+            var _a = _this.getPeaks(leftChannelData, rightChannelData), lowPeak = _a.lowPeak, highPeak = _a.highPeak;
+            _this.setState({
+                leftChannelData: leftChannelData,
+                rightChannelData: rightChannelData,
+                lowPeak: lowPeak,
+                highPeak: highPeak,
+            }, callback);
         };
+        _this.getPeaks = function () {
+            var channels = [];
+            for (var _i = 0; _i < arguments.length; _i++) {
+                channels[_i] = arguments[_i];
+            }
+            var lowPeak = 0;
+            var highPeak = 0;
+            channels.forEach(function (channelData) { return channelData.forEach(function (amplitude) {
+                if (amplitude < lowPeak) {
+                    lowPeak = amplitude;
+                }
+                if (amplitude > highPeak) {
+                    highPeak = amplitude;
+                }
+            }); });
+            return { lowPeak: lowPeak, highPeak: highPeak };
+        };
+        _this.log10 = function (x) { return Math.log(x) * Math.LOG10E; };
+        _this.roundHalf = function (x) { return Math.round(x * 2) / 2; };
         _this.plotWaveform = function (width) {
-            var _a = _this.state, leftChannelData = _a.leftChannelData, rightChannelData = _a.rightChannelData;
+            var pixelCount = width * 2;
+            var _a = _this.state, leftChannelData = _a.leftChannelData, rightChannelData = _a.rightChannelData, lowPeak = _a.lowPeak, highPeak = _a.highPeak;
             var context = _this.canvas && _this.canvas.getContext('2d');
             if (!leftChannelData || leftChannelData.length === 0 || !context) {
                 return;
+            }
+            var MID_Y = CANVAS_HEIGHT / 2;
+            var peak = Math.max(Math.abs(lowPeak), highPeak);
+            var NORMALIZE_FACTOR = (CANVAS_HEIGHT / peak);
+            var DECIMATION_FACTOR = leftChannelData.length / pixelCount;
+            context.clearRect(0, 0, width, CANVAS_HEIGHT);
+            context.fillRect(0, MID_Y, width, 1);
+            for (var i = 0; i < width; i += 0.5) {
+                var amplitude = Math.abs(leftChannelData[Math.round((i * 2) * DECIMATION_FACTOR)] * NORMALIZE_FACTOR);
+                context.fillRect(i, MID_Y - amplitude, 1, amplitude * 2);
             }
         };
         return _this;
@@ -33167,11 +33204,17 @@ var LooprView = /** @class */ (function (_super) {
         this.plotWaveform(this.props.width);
     };
     LooprView.prototype.componentWillReceiveProps = function (nextProps) {
-        var _this = this;
-        var currBuffer = this.props.audioBuffer;
-        var nextBuffer = nextProps.audioBuffer, width = nextProps.width;
+        var _a = this.props, currBuffer = _a.audioBuffer, prevWidth = _a.width;
+        var nextBuffer = nextProps.audioBuffer, nextWidth = nextProps.width;
         if (nextBuffer !== currBuffer) {
-            this.hydrateChannelData(nextBuffer, function () { return _this.plotWaveform(width); });
+            this.hydrateChannelData(nextBuffer);
+        }
+    };
+    LooprView.prototype.componentDidUpdate = function (prevProps) {
+        var _a = this.props, currWidth = _a.width, currAudioBuffer = _a.audioBuffer;
+        var prevWidth = prevProps.width, prevAudioBuffer = prevProps.audioBuffer;
+        if (currWidth !== prevWidth || currAudioBuffer !== prevAudioBuffer) {
+            this.plotWaveform(currWidth);
         }
     };
     LooprView.prototype.render = function () {
@@ -33181,7 +33224,7 @@ var LooprView = /** @class */ (function (_super) {
                 width: width,
                 height: height,
             } },
-            React.createElement("canvas", { ref: function (canvas) { return _this.canvas = canvas; }, width: width, height: 200, style: {
+            React.createElement("canvas", { ref: function (canvas) { return _this.canvas = canvas; }, width: width, height: CANVAS_HEIGHT, style: {
                     marginTop: 40,
                     backgroundColor: 'rgba(0, 0, 0, 0.2)',
                 } })));

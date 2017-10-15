@@ -26,9 +26,7 @@ const config = {
             patterns: [
                 {
                     match: /src=".\/dist\/index.js"/g,
-                    replacement: function (match) {
-                        return 'src="index.js"';
-                    }
+                    replacement: () => 'src="index.js"',
                 },
             ]
         })
