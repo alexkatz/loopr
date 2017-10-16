@@ -33240,7 +33240,7 @@ var LooprInterface = /** @class */ (function (_super) {
             context.fillRect(0, MID_Y, width, 1);
             for (var i = 0; i < width; i += 0.5) {
                 var amplitude = Math.abs(leftChannelData[Math.round((i * 2) * DECIMATION_FACTOR)] * NORMALIZE_FACTOR);
-                context.fillRect(i, MID_Y - amplitude, 1, amplitude * 2);
+                context.fillRect(i, MID_Y - amplitude, 0.5, amplitude * 2);
             }
         };
         return _this;
