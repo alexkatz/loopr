@@ -4,4 +4,8 @@ export const Constant = {
         REGULAR: 400 as 400,
     },
     PADDING: 8,
+    Key: {
+        SPACE: ' ',
+        SHIFT: 'Shift',
+    },
 };

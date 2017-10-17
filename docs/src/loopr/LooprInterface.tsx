@@ -128,7 +128,7 @@ class LooprInterface extends React.Component<LooprViewProps, LooprViewState> {
 
     private onKeyDown = (e: KeyboardEvent) => {
         this.stopPlayback();
-        if (e.key === ' ') {
+        if (e.key === Constant.Key.SPACE) {
             this.startPlayback();
         }
     }
