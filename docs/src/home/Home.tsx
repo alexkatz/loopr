@@ -59,6 +59,7 @@ class Home extends React.Component<any, HomeState> {
                                     width={width}
                                     height={height}
                                     audioBuffer={audioBuffer}
+                                    loopr={this.loopr}
                                 />
                             )}
                         </Dropzone>

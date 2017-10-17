@@ -2638,6 +2638,8 @@ var SortDirection = {
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.Color = {
     WHITE: '#FFFFFF',
+    CURSOR_COLOR: 'rgba(255, 255, 255, 0.4)',
+    SELECTION_COLOR: 'rgba(255, 255, 255, 0.2)',
     ORANGE: '#FFAE70',
     LIGHT_BLUE: '#8CB9EE',
     MID_BLUE: '#6E9BCF',
@@ -29182,7 +29184,7 @@ var Home = /** @class */ (function (_super) {
                         height: '100%',
                     } },
                     !audioBuffer && (React.createElement(Welcome_1.Welcome, { width: width })),
-                    audioBuffer && (React.createElement(LooprInterface_1.LooprInterface, { width: width, height: height, audioBuffer: audioBuffer })))));
+                    audioBuffer && (React.createElement(LooprInterface_1.LooprInterface, { width: width, height: height, audioBuffer: audioBuffer, loopr: _this.loopr })))));
         }));
     };
     return Home;
@@ -33119,6 +33121,27 @@ var Loopr = /** @class */ (function () {
                 _this.audioBufferChangedListeners = _this.audioBufferChangedListeners.filter(function (l, i) { return i !== index; });
             };
         };
+        this.play = function (_a) {
+            var startLocatorPercent = _a.startLocatorPercent, endLocatorPercent = _a.endLocatorPercent;
+            var source = _this.audioContext.createBufferSource();
+            var stopped = false;
+            source.buffer = _this.internalBuffer;
+            source.connect(_this.audioContext.destination);
+            var startSeconds = _this.internalBuffer.duration * startLocatorPercent;
+            if (endLocatorPercent != null) {
+                var endSeconds = _this.internalBuffer.duration * endLocatorPercent;
+                source.loopStart = startSeconds;
+                source.loopEnd = endSeconds;
+                source.loop = true;
+            }
+            source.start(0, startSeconds);
+            return function () {
+                if (!stopped) {
+                    source.stop();
+                    stopped = true;
+                }
+            };
+        };
         var ValidAudioContext = window.AudioContext || window.webkitAudioContext;
         if (ValidAudioContext) {
             this.audioContext = new ValidAudioContext();
@@ -33161,35 +33184,44 @@ var React = __webpack_require__(1);
 var colors_1 = __webpack_require__(65);
 var constants_1 = __webpack_require__(108);
 var CANVAS_HEIGHT = 200;
+var MIN_LOOP_PERCENT = 0.001;
 var LooprInterface = /** @class */ (function (_super) {
     __extends(LooprInterface, _super);
-    function LooprInterface() {
-        var _this = _super !== null && _super.apply(this, arguments) || this;
+    function LooprInterface(props) {
+        var _this = _super.call(this, props) || this;
         _this.canvas = null;
+        _this.stop = function () { };
+        _this.loopr = null;
         // MOUSE EVENTS
         _this.onMouseDown = function (e) {
             var width = _this.props.width;
             var left = _this.canvas.getBoundingClientRect().left;
             var x = e.clientX - left;
-            _this.setState({ leftLocatorPercent: x / width, isMouseDown: true });
+            _this.setState({ locator1Percent: x / width, isMouseDown: true, locator2Percent: null });
         };
         _this.onMouseMove = function (e) {
-            var _a = _this.state, leftLocatorPercent = _a.leftLocatorPercent, isMouseDown = _a.isMouseDown;
+            var _a = _this.state, locator1Percent = _a.locator1Percent, isMouseDown = _a.isMouseDown;
             if (isMouseDown) {
                 var width = _this.props.width;
                 var left = _this.canvas.getBoundingClientRect().left;
                 var x = e.clientX - left;
-                var rightLocatorPercent = x / width;
-                _this.setState({ rightLocatorPercent: Math.abs(leftLocatorPercent - rightLocatorPercent) > .01 ? rightLocatorPercent : null });
+                var locator2Percent = x / width;
+                _this.setState({ locator2Percent: Math.abs(locator1Percent - locator2Percent) > MIN_LOOP_PERCENT ? locator2Percent : null });
             }
         };
         _this.onMouseUp = function (e) {
             var width = _this.props.width;
-            var leftLocatorPercent = _this.state.leftLocatorPercent;
+            var locator1Percent = _this.state.locator1Percent;
             var left = _this.canvas.getBoundingClientRect().left;
             var x = e.clientX - left;
-            var rightLocatorPercent = x / width;
-            _this.setState({ isMouseDown: false, rightLocatorPercent: Math.abs(leftLocatorPercent - rightLocatorPercent) > .01 ? rightLocatorPercent : null });
+            var locator2Percent = x / width;
+            _this.setState({ isMouseDown: false, locator2Percent: Math.abs(locator1Percent - locator2Percent) > MIN_LOOP_PERCENT ? locator2Percent : null });
+        };
+        _this.onKeyDown = function (e) {
+            _this.stopPlayback();
+            if (e.key === ' ') {
+                _this.startPlayback();
+            }
         };
         _this.subscribeToWindowMouseEvents = function () {
             window.addEventListener('mousemove', _this.onMouseMove);
@@ -33243,20 +33275,52 @@ var LooprInterface = /** @class */ (function (_super) {
                 context.fillRect(i, MID_Y - amplitude, 0.5, amplitude * 2);
             }
         };
+        _this.drawLocators = function (context, width) {
+            var _a = _this.getStartEndLocators(), startLocatorPercent = _a.startLocatorPercent, endLocatorPercent = _a.endLocatorPercent;
+            if (startLocatorPercent != null) {
+                context.fillStyle = colors_1.Color.CURSOR_COLOR;
+                var leftLocatorX = width * startLocatorPercent;
+                context.fillRect(leftLocatorX, 0, 1, CANVAS_HEIGHT);
+                if (endLocatorPercent != null) {
+                    var rightLocatorX = width * endLocatorPercent;
+                    context.fillRect(rightLocatorX, 0, 1, CANVAS_HEIGHT);
+                    context.fillStyle = colors_1.Color.SELECTION_COLOR;
+                    var startX = leftLocatorX + 1;
+                    var endX = rightLocatorX;
+                    context.fillRect(startX, 0, endX - startX, CANVAS_HEIGHT);
+                }
+            }
+        };
+        _this.getStartEndLocators = function () {
+            var _a = _this.state, locator1Percent = _a.locator1Percent, locator2Percent = _a.locator2Percent;
+            var startLocatorPercent = locator2Percent === null || locator1Percent <= locator2Percent ? locator1Percent : locator1Percent;
+            var endLocatorPercent = startLocatorPercent === locator1Percent ? locator2Percent : locator1Percent;
+            return { startLocatorPercent: startLocatorPercent, endLocatorPercent: endLocatorPercent };
+        };
+        _this.stopPlayback = function () {
+            _this.stop();
+        };
+        _this.startPlayback = function () {
+            _this.stop = _this.loopr.play(_this.getStartEndLocators());
+        };
+        _this.loopr = props.loopr;
         return _this;
     }
     LooprInterface.prototype.componentWillMount = function () {
-        var audioBuffer = this.props.audioBuffer;
+        var _a = this.props, audioBuffer = _a.audioBuffer, loopr = _a.loopr;
         if (audioBuffer) {
             this.hydrateChannelData(audioBuffer);
         }
     };
     LooprInterface.prototype.componentDidMount = function () {
         this.subscribeToWindowMouseEvents();
+        window.addEventListener('keydown', this.onKeyDown);
         this.draw();
     };
     LooprInterface.prototype.componentWillUnmount = function () {
+        this.loopr = null;
         this.UnsubscribeFromWindowMouseEvents();
+        window.removeEventListener('keydown', this.onKeyDown);
     };
     LooprInterface.prototype.componentWillReceiveProps = function (nextProps) {
         var _a = this.props, currBuffer = _a.audioBuffer, prevWidth = _a.width;
@@ -33292,6 +33356,7 @@ var LooprInterface = /** @class */ (function (_super) {
         var width = this.props.width;
         context.clearRect(0, 0, width, CANVAS_HEIGHT);
         this.plotWaveform(context, width);
+        this.drawLocators(context, width);
     };
     return LooprInterface;
 }(React.Component));

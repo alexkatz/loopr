@@ -36,4 +36,25 @@ export class Loopr {
             this.audioBufferChangedListeners = this.audioBufferChangedListeners.filter((l, i) => i !== index);
         };
     }
+
+    public play = ({ startLocatorPercent, endLocatorPercent }): () => void => {
+        const source = this.audioContext.createBufferSource();
+        let stopped = false;
+        source.buffer = this.internalBuffer;
+        source.connect(this.audioContext.destination);
+        const startSeconds = this.internalBuffer.duration * startLocatorPercent;
+        if (endLocatorPercent != null) {
+            const endSeconds = this.internalBuffer.duration * endLocatorPercent;
+            source.loopStart = startSeconds;
+            source.loopEnd = endSeconds;
+            source.loop = true;
+        }
+        source.start(0, startSeconds);
+        return () => {
+            if (!stopped) {
+                source.stop();
+                stopped = true;
+            }
+        };
+    }
 }
