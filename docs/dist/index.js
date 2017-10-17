@@ -8985,6 +8985,10 @@ exports.Constant = {
         REGULAR: 400,
     },
     PADDING: 8,
+    Key: {
+        SPACE: ' ',
+        SHIFT: 'Shift',
+    },
 };
 
 
@@ -33219,7 +33223,7 @@ var LooprInterface = /** @class */ (function (_super) {
         };
         _this.onKeyDown = function (e) {
             _this.stopPlayback();
-            if (e.key === ' ') {
+            if (e.key === constants_1.Constant.Key.SPACE) {
                 _this.startPlayback();
             }
         };
