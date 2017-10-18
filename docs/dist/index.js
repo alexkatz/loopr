@@ -33113,6 +33113,8 @@ var Loopr = /** @class */ (function () {
         this.audioContext = null;
         this.internalBuffer = null;
         this.audioBufferChangedListeners = [];
+        this.startedAt = null;
+        this.source = null;
         this.setAudioFile = function (file) {
             var fileReader = new FileReader();
             fileReader.onloadend = function () { return _this.audioContext.decodeAudioData(fileReader.result, function (buffer) { return _this.buffer = buffer; }); };
@@ -33126,25 +33128,25 @@ var Loopr = /** @class */ (function () {
             };
         };
         this.play = function (_a) {
-            var startLocatorPercent = _a.startLocatorPercent, endLocatorPercent = _a.endLocatorPercent;
-            var source = _this.audioContext.createBufferSource();
-            var stopped = false;
-            source.buffer = _this.internalBuffer;
-            source.connect(_this.audioContext.destination);
+            var _b = _a.startLocatorPercent, startLocatorPercent = _b === void 0 ? 0 : _b, endLocatorPercent = _a.endLocatorPercent;
+            _this.source = _this.audioContext.createBufferSource();
+            _this.source.buffer = _this.internalBuffer;
+            _this.source.connect(_this.audioContext.destination);
             var startSeconds = _this.internalBuffer.duration * startLocatorPercent;
             if (endLocatorPercent != null) {
                 var endSeconds = _this.internalBuffer.duration * endLocatorPercent;
-                source.loopStart = startSeconds;
-                source.loopEnd = endSeconds;
-                source.loop = true;
+                _this.source.loopStart = startSeconds;
+                _this.source.loopEnd = endSeconds;
+                _this.source.loop = true;
             }
-            source.start(0, startSeconds);
-            return function () {
-                if (!stopped) {
-                    source.stop();
-                    stopped = true;
-                }
-            };
+            _this.startedAt = _this.audioContext.currentTime;
+            _this.source.start(0, startSeconds);
+        };
+        this.stop = function () {
+            if (_this.startedAt) {
+                _this.source.stop();
+            }
+            _this.startedAt = null;
         };
         var ValidAudioContext = window.AudioContext || window.webkitAudioContext;
         if (ValidAudioContext) {
@@ -33158,6 +33160,16 @@ var Loopr = /** @class */ (function () {
         set: function (buffer) {
             this.internalBuffer = buffer;
             this.audioBufferChangedListeners.forEach(function (listener) { return listener(buffer); });
+        },
+        enumerable: true,
+        configurable: true
+    });
+    Object.defineProperty(Loopr.prototype, "currentPlaybackTime", {
+        get: function () {
+            if (this.startedAt) {
+                return this.audioContext.currentTime - this.startedAt;
+            }
+            return null;
         },
         enumerable: true,
         configurable: true
@@ -33194,7 +33206,6 @@ var LooprInterface = /** @class */ (function (_super) {
     function LooprInterface(props) {
         var _this = _super.call(this, props) || this;
         _this.canvas = null;
-        _this.stop = function () { };
         _this.loopr = null;
         // MOUSE EVENTS
         _this.onMouseDown = function (e) {
@@ -33222,7 +33233,7 @@ var LooprInterface = /** @class */ (function (_super) {
             _this.setState({ isMouseDown: false, locator2Percent: Math.abs(locator1Percent - locator2Percent) > MIN_LOOP_PERCENT ? locator2Percent : null });
         };
         _this.onKeyDown = function (e) {
-            _this.stopPlayback();
+            _this.loopr.stop();
             if (e.key === constants_1.Constant.Key.SPACE) {
                 _this.startPlayback();
             }
@@ -33237,8 +33248,8 @@ var LooprInterface = /** @class */ (function (_super) {
         };
         _this.hydrateChannelData = function (audioBuffer, callback) {
             var leftChannelData = audioBuffer.getChannelData(0);
-            var rightChannelData = audioBuffer.getChannelData(1);
-            var _a = _this.getPeaks(leftChannelData, rightChannelData), lowPeak = _a.lowPeak, highPeak = _a.highPeak;
+            var rightChannelData = audioBuffer.numberOfChannels > 1 ? audioBuffer.getChannelData(1) : null;
+            var _a = _this.getPeaks(leftChannelData, rightChannelData || []), lowPeak = _a.lowPeak, highPeak = _a.highPeak;
             _this.setState({
                 leftChannelData: leftChannelData,
                 rightChannelData: rightChannelData,
@@ -33281,11 +33292,11 @@ var LooprInterface = /** @class */ (function (_super) {
         };
         _this.drawLocators = function (context, width) {
             var _a = _this.getStartEndLocators(), startLocatorPercent = _a.startLocatorPercent, endLocatorPercent = _a.endLocatorPercent;
-            if (startLocatorPercent != null) {
+            if (startLocatorPercent !== null) {
                 context.fillStyle = colors_1.Color.CURSOR_COLOR;
                 var leftLocatorX = width * startLocatorPercent;
                 context.fillRect(leftLocatorX, 0, 1, CANVAS_HEIGHT);
-                if (endLocatorPercent != null) {
+                if (endLocatorPercent !== null) {
                     var rightLocatorX = width * endLocatorPercent;
                     context.fillRect(rightLocatorX, 0, 1, CANVAS_HEIGHT);
                     context.fillStyle = colors_1.Color.SELECTION_COLOR;
@@ -33301,11 +33312,14 @@ var LooprInterface = /** @class */ (function (_super) {
             var endLocatorPercent = startLocatorPercent === locator1Percent ? locator2Percent : locator1Percent;
             return { startLocatorPercent: startLocatorPercent, endLocatorPercent: endLocatorPercent };
         };
-        _this.stopPlayback = function () {
-            _this.stop();
-        };
         _this.startPlayback = function () {
-            _this.stop = _this.loopr.play(_this.getStartEndLocators());
+            _this.loopr.play(_this.getStartEndLocators());
+            window.requestAnimationFrame(_this.animatePlayback);
+        };
+        _this.animatePlayback = function () {
+            if (_this.loopr.currentPlaybackTime !== null) {
+                window.requestAnimationFrame(_this.animatePlayback);
+            }
         };
         _this.loopr = props.loopr;
         return _this;
