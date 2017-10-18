@@ -7,6 +7,9 @@ export class Loopr {
     private internalBuffer: AudioBuffer = null;
     private audioBufferChangedListeners: AudioBufferChangedHandler[] = [];
 
+    private startedAt: number = null;
+    private source: AudioBufferSourceNode = null;
+
     constructor() {
         const ValidAudioContext = (window as any).AudioContext || (window as any).webkitAudioContext;
         if (ValidAudioContext) {
@@ -23,6 +26,14 @@ export class Loopr {
         this.audioBufferChangedListeners.forEach(listener => listener(buffer));
     }
 
+    public get currentPlaybackTime(): number {
+        if (this.startedAt) {
+            return this.audioContext.currentTime - this.startedAt;
+        }
+
+        return null;
+    }
+
     public setAudioFile = (file: File) => {
         const fileReader = new FileReader();
         fileReader.onloadend = () => this.audioContext.decodeAudioData(fileReader.result, buffer => this.buffer = buffer);
@@ -37,24 +48,23 @@ export class Loopr {
         };
     }
 
-    public play = ({ startLocatorPercent, endLocatorPercent }): () => void => {
-        const source = this.audioContext.createBufferSource();
-        let stopped = false;
-        source.buffer = this.internalBuffer;
-        source.connect(this.audioContext.destination);
+    public play = ({ startLocatorPercent = 0, endLocatorPercent }) => {
+        this.source = this.audioContext.createBufferSource();
+        this.source.buffer = this.internalBuffer;
+        this.source.connect(this.audioContext.destination);
         const startSeconds = this.internalBuffer.duration * startLocatorPercent;
         if (endLocatorPercent != null) {
             const endSeconds = this.internalBuffer.duration * endLocatorPercent;
-            source.loopStart = startSeconds;
-            source.loopEnd = endSeconds;
-            source.loop = true;
+            this.source.loopStart = startSeconds;
+            this.source.loopEnd = endSeconds;
+            this.source.loop = true;
         }
-        source.start(0, startSeconds);
-        return () => {
-            if (!stopped) {
-                source.stop();
-                stopped = true;
-            }
-        };
+        this.startedAt = this.audioContext.currentTime;
+        this.source.start(0, startSeconds);
+    }
+
+    public stop = () => {
+        if (this.startedAt) { this.source.stop(); }
+        this.startedAt = null;
     }
 }

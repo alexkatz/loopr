@@ -25,7 +25,6 @@ interface LooprViewState {
 
 class LooprInterface extends React.Component<LooprViewProps, LooprViewState> {
     private canvas: HTMLCanvasElement = null;
-    private stop: () => void = () => { };
     private loopr: Loopr = null;
 
     constructor(props: LooprViewProps) {
@@ -127,7 +126,7 @@ class LooprInterface extends React.Component<LooprViewProps, LooprViewState> {
     }
 
     private onKeyDown = (e: KeyboardEvent) => {
-        this.stopPlayback();
+        this.loopr.stop();
         if (e.key === Constant.Key.SPACE) {
             this.startPlayback();
         }
@@ -155,8 +154,8 @@ class LooprInterface extends React.Component<LooprViewProps, LooprViewState> {
 
     private hydrateChannelData = (audioBuffer: AudioBuffer, callback?: () => void) => {
         const leftChannelData = audioBuffer.getChannelData(0);
-        const rightChannelData = audioBuffer.getChannelData(1);
-        const { lowPeak, highPeak } = this.getPeaks(leftChannelData, rightChannelData);
+        const rightChannelData = audioBuffer.numberOfChannels > 1 ? audioBuffer.getChannelData(1) : null;
+        const { lowPeak, highPeak } = this.getPeaks(leftChannelData, rightChannelData || []);
         this.setState({
             leftChannelData,
             rightChannelData,
@@ -195,11 +194,11 @@ class LooprInterface extends React.Component<LooprViewProps, LooprViewState> {
 
     private drawLocators = (context: CanvasRenderingContext2D, width: number) => {
         const { startLocatorPercent, endLocatorPercent } = this.getStartEndLocators();
-        if (startLocatorPercent != null) {
+        if (startLocatorPercent !== null) {
             context.fillStyle = Color.CURSOR_COLOR;
             const leftLocatorX = width * startLocatorPercent;
             context.fillRect(leftLocatorX, 0, 1, CANVAS_HEIGHT);
-            if (endLocatorPercent != null) {
+            if (endLocatorPercent !== null) {
                 const rightLocatorX = width * endLocatorPercent;
                 context.fillRect(rightLocatorX, 0, 1, CANVAS_HEIGHT);
                 context.fillStyle = Color.SELECTION_COLOR;
@@ -217,12 +216,15 @@ class LooprInterface extends React.Component<LooprViewProps, LooprViewState> {
         return { startLocatorPercent, endLocatorPercent };
     }
 
-    private stopPlayback = () => {
-        this.stop();
+    private startPlayback = () => {
+        this.loopr.play(this.getStartEndLocators());
+        window.requestAnimationFrame(this.animatePlayback);
     }
 
-    private startPlayback = () => {
-        this.stop = this.loopr.play(this.getStartEndLocators());
+    private animatePlayback: FrameRequestCallback = () => {
+        if (this.loopr.currentPlaybackTime !== null) {
+            window.requestAnimationFrame(this.animatePlayback);
+        }
     }
 }
 
