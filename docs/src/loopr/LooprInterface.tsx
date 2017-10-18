@@ -4,7 +4,13 @@ import { Constant } from '../shared/constants';
 import { Loopr } from './loopr';
 
 const CANVAS_HEIGHT = 200;
+const PLAYBACK_BAR_WIDTH = 5;
 const MIN_LOOP_PERCENT = 0.001;
+
+interface Locators {
+    startLocatorPercent: number;
+    endLocatorPercent: number;
+}
 
 interface LooprViewProps {
     width: number;
@@ -21,6 +27,7 @@ interface LooprViewState {
     locator1Percent: number;
     locator2Percent: number;
     isMouseDown: boolean;
+    lastPlaybackLocators: Locators; // TODO: draw these too, so locators stay present even if user alters locators during playback...
 }
 
 class LooprInterface extends React.Component<LooprViewProps, LooprViewState> {
@@ -138,8 +145,9 @@ class LooprInterface extends React.Component<LooprViewProps, LooprViewState> {
         const context = this.canvas.getContext('2d');
         const { width } = this.props;
         context.clearRect(0, 0, width, CANVAS_HEIGHT);
-        this.plotWaveform(context, width);
+        this.drawWaveform(context, width);
         this.drawLocators(context, width);
+        this.drawPlaybackProgress(context, width);
     }
 
     private subscribeToWindowMouseEvents = () => {
@@ -177,7 +185,7 @@ class LooprInterface extends React.Component<LooprViewProps, LooprViewState> {
     private log10 = x => Math.log(x) * Math.LOG10E;
     private roundHalf = x => Math.round(x * 2) / 2;
 
-    private plotWaveform = (context: CanvasRenderingContext2D, width: number) => {
+    private drawWaveform = (context: CanvasRenderingContext2D, width: number) => { // TODO: color waveform differently when within loop boundaries or playback progress boundaries...
         const pixelCount = width * 2;
         const { leftChannelData, rightChannelData, lowPeak, highPeak } = this.state;
         const MID_Y = CANVAS_HEIGHT / 2;
@@ -209,19 +217,33 @@ class LooprInterface extends React.Component<LooprViewProps, LooprViewState> {
         }
     }
 
-    private getStartEndLocators = (): { startLocatorPercent: number; endLocatorPercent: number; } => {
+    private drawPlaybackProgress = (context: CanvasRenderingContext2D, width: number) => {
+        if (this.loopr.currentPlaybackTime === null) { return; }
+        const { lastPlaybackLocators: { startLocatorPercent, endLocatorPercent } } = this.state;
+        const isLoop = startLocatorPercent !== null && endLocatorPercent !== null;
+        const progressPercent = this.loopr.currentPlaybackTime / this.loopr.duration;
+        const progressWidth = width * progressPercent % (isLoop ? (width * endLocatorPercent) - (width * startLocatorPercent) : width);
+        context.fillStyle = Color.SELECTION_COLOR;
+        context.fillRect((width * startLocatorPercent), 0, progressWidth, CANVAS_HEIGHT);
+    }
+
+    private getStartEndLocators = (): Locators => {
         const { locator1Percent, locator2Percent } = this.state;
-        const startLocatorPercent = locator2Percent === null || locator1Percent <= locator2Percent ? locator1Percent : locator1Percent;
+        const startLocatorPercent = (locator2Percent === null) || (locator1Percent <= locator2Percent) ? locator1Percent : locator2Percent;
         const endLocatorPercent = startLocatorPercent === locator1Percent ? locator2Percent : locator1Percent;
         return { startLocatorPercent, endLocatorPercent };
     }
 
     private startPlayback = () => {
-        this.loopr.play(this.getStartEndLocators());
-        window.requestAnimationFrame(this.animatePlayback);
+        const lastPlaybackLocators = this.getStartEndLocators();
+        this.setState({ lastPlaybackLocators }, () => {
+            this.loopr.play(lastPlaybackLocators);
+            window.requestAnimationFrame(this.animatePlayback);
+        });
     }
 
     private animatePlayback: FrameRequestCallback = () => {
+        this.draw();
         if (this.loopr.currentPlaybackTime !== null) {
             window.requestAnimationFrame(this.animatePlayback);
         }

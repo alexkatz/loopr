@@ -34,6 +34,10 @@ export class Loopr {
         return null;
     }
 
+    public get duration(): number {
+        return this.buffer.duration;
+    }
+
     public setAudioFile = (file: File) => {
         const fileReader = new FileReader();
         fileReader.onloadend = () => this.audioContext.decodeAudioData(fileReader.result, buffer => this.buffer = buffer);
