@@ -33,6 +33,7 @@ interface LooprViewState {
 class LooprInterface extends React.Component<LooprViewProps, LooprViewState> {
     private canvas: HTMLCanvasElement = null;
     private loopr: Loopr = null;
+    private isPlaying: boolean = false;
 
     constructor(props: LooprViewProps) {
         super(props);
@@ -109,7 +110,11 @@ class LooprInterface extends React.Component<LooprViewProps, LooprViewState> {
         const { width } = this.props;
         const { left } = this.canvas.getBoundingClientRect();
         const x = e.clientX - left;
-        this.setState({ locator1Percent: x / width, isMouseDown: true, locator2Percent: null });
+        if (e.shiftKey) {
+
+        } else {
+            this.setState({ locator1Percent: x / width, isMouseDown: true, locator2Percent: null });
+        }
     }
 
     private onMouseMove = (e: MouseEvent) => {
@@ -133,9 +138,14 @@ class LooprInterface extends React.Component<LooprViewProps, LooprViewState> {
     }
 
     private onKeyDown = (e: KeyboardEvent) => {
-        this.loopr.stop();
-        if (e.key === Constant.Key.SPACE) {
+        e.preventDefault();
+        e.stopPropagation();
+        if (e.key === Constant.Key.SHIFT) {
+            // no-op for now
+        } else if (e.key === Constant.Key.SPACE) {
             this.startPlayback();
+        } else {
+            this.loopr.stop();
         }
     }
 
@@ -238,13 +248,21 @@ class LooprInterface extends React.Component<LooprViewProps, LooprViewState> {
         const lastPlaybackLocators = this.getStartEndLocators();
         this.setState({ lastPlaybackLocators }, () => {
             this.loopr.play(lastPlaybackLocators);
-            window.requestAnimationFrame(this.animatePlayback);
+            if (!this.isPlaying) {
+                this.isPlaying = true;
+                window.requestAnimationFrame(this.animatePlayback);
+            }
         });
+    }
+
+    private stopPlayback = () => {
+        this.loopr.stop();
+        this.isPlaying = false;
     }
 
     private animatePlayback: FrameRequestCallback = () => {
         this.draw();
-        if (this.loopr.currentPlaybackTime !== null) {
+        if (this.isPlaying) {
             window.requestAnimationFrame(this.animatePlayback);
         }
     }

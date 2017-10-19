@@ -7,7 +7,7 @@ export class Loopr {
     private internalBuffer: AudioBuffer = null;
     private audioBufferChangedListeners: AudioBufferChangedHandler[] = [];
 
-    private startedAt: number = null;
+    public startedAt: number = null;
     private source: AudioBufferSourceNode = null;
 
     constructor() {
@@ -53,6 +53,7 @@ export class Loopr {
     }
 
     public play = ({ startLocatorPercent = 0, endLocatorPercent }) => {
+        if (this.source) { this.source.stop(); }
         this.source = this.audioContext.createBufferSource();
         this.source.buffer = this.internalBuffer;
         this.source.connect(this.audioContext.destination);
@@ -68,7 +69,8 @@ export class Loopr {
     }
 
     public stop = () => {
-        if (this.startedAt) { this.source.stop(); }
+        if (this.source) { this.source.stop(); }
         this.startedAt = null;
+        this.source = null;
     }
 }
