@@ -33129,6 +33129,9 @@ var Loopr = /** @class */ (function () {
         };
         this.play = function (_a) {
             var _b = _a.startLocatorPercent, startLocatorPercent = _b === void 0 ? 0 : _b, endLocatorPercent = _a.endLocatorPercent;
+            if (_this.source) {
+                _this.source.stop();
+            }
             _this.source = _this.audioContext.createBufferSource();
             _this.source.buffer = _this.internalBuffer;
             _this.source.connect(_this.audioContext.destination);
@@ -33143,10 +33146,11 @@ var Loopr = /** @class */ (function () {
             _this.source.start(0, startSeconds);
         };
         this.stop = function () {
-            if (_this.startedAt) {
+            if (_this.source) {
                 _this.source.stop();
             }
             _this.startedAt = null;
+            _this.source = null;
         };
         var ValidAudioContext = window.AudioContext || window.webkitAudioContext;
         if (ValidAudioContext) {
@@ -33170,6 +33174,13 @@ var Loopr = /** @class */ (function () {
                 return this.audioContext.currentTime - this.startedAt;
             }
             return null;
+        },
+        enumerable: true,
+        configurable: true
+    });
+    Object.defineProperty(Loopr.prototype, "duration", {
+        get: function () {
+            return this.buffer.duration;
         },
         enumerable: true,
         configurable: true
@@ -33200,6 +33211,7 @@ var React = __webpack_require__(1);
 var colors_1 = __webpack_require__(65);
 var constants_1 = __webpack_require__(108);
 var CANVAS_HEIGHT = 200;
+var PLAYBACK_BAR_WIDTH = 5;
 var MIN_LOOP_PERCENT = 0.001;
 var LooprInterface = /** @class */ (function (_super) {
     __extends(LooprInterface, _super);
@@ -33207,12 +33219,17 @@ var LooprInterface = /** @class */ (function (_super) {
         var _this = _super.call(this, props) || this;
         _this.canvas = null;
         _this.loopr = null;
+        _this.isPlaying = false;
         // MOUSE EVENTS
         _this.onMouseDown = function (e) {
             var width = _this.props.width;
             var left = _this.canvas.getBoundingClientRect().left;
             var x = e.clientX - left;
-            _this.setState({ locator1Percent: x / width, isMouseDown: true, locator2Percent: null });
+            if (e.shiftKey) {
+            }
+            else {
+                _this.setState({ locator1Percent: x / width, isMouseDown: true, locator2Percent: null });
+            }
         };
         _this.onMouseMove = function (e) {
             var _a = _this.state, locator1Percent = _a.locator1Percent, isMouseDown = _a.isMouseDown;
@@ -33233,9 +33250,16 @@ var LooprInterface = /** @class */ (function (_super) {
             _this.setState({ isMouseDown: false, locator2Percent: Math.abs(locator1Percent - locator2Percent) > MIN_LOOP_PERCENT ? locator2Percent : null });
         };
         _this.onKeyDown = function (e) {
-            _this.loopr.stop();
-            if (e.key === constants_1.Constant.Key.SPACE) {
+            e.preventDefault();
+            e.stopPropagation();
+            if (e.key === constants_1.Constant.Key.SHIFT) {
+                // no-op for now
+            }
+            else if (e.key === constants_1.Constant.Key.SPACE) {
                 _this.startPlayback();
+            }
+            else {
+                _this.loopr.stop();
             }
         };
         _this.subscribeToWindowMouseEvents = function () {
@@ -33276,7 +33300,7 @@ var LooprInterface = /** @class */ (function (_super) {
         };
         _this.log10 = function (x) { return Math.log(x) * Math.LOG10E; };
         _this.roundHalf = function (x) { return Math.round(x * 2) / 2; };
-        _this.plotWaveform = function (context, width) {
+        _this.drawWaveform = function (context, width) {
             var pixelCount = width * 2;
             var _a = _this.state, leftChannelData = _a.leftChannelData, rightChannelData = _a.rightChannelData, lowPeak = _a.lowPeak, highPeak = _a.highPeak;
             var MID_Y = CANVAS_HEIGHT / 2;
@@ -33306,18 +33330,40 @@ var LooprInterface = /** @class */ (function (_super) {
                 }
             }
         };
+        _this.drawPlaybackProgress = function (context, width) {
+            if (_this.loopr.currentPlaybackTime === null) {
+                return;
+            }
+            var _a = _this.state.lastPlaybackLocators, startLocatorPercent = _a.startLocatorPercent, endLocatorPercent = _a.endLocatorPercent;
+            var isLoop = startLocatorPercent !== null && endLocatorPercent !== null;
+            var progressPercent = _this.loopr.currentPlaybackTime / _this.loopr.duration;
+            var progressWidth = width * progressPercent % (isLoop ? (width * endLocatorPercent) - (width * startLocatorPercent) : width);
+            context.fillStyle = colors_1.Color.SELECTION_COLOR;
+            context.fillRect((width * startLocatorPercent), 0, progressWidth, CANVAS_HEIGHT);
+        };
         _this.getStartEndLocators = function () {
             var _a = _this.state, locator1Percent = _a.locator1Percent, locator2Percent = _a.locator2Percent;
-            var startLocatorPercent = locator2Percent === null || locator1Percent <= locator2Percent ? locator1Percent : locator1Percent;
+            var startLocatorPercent = (locator2Percent === null) || (locator1Percent <= locator2Percent) ? locator1Percent : locator2Percent;
             var endLocatorPercent = startLocatorPercent === locator1Percent ? locator2Percent : locator1Percent;
             return { startLocatorPercent: startLocatorPercent, endLocatorPercent: endLocatorPercent };
         };
         _this.startPlayback = function () {
-            _this.loopr.play(_this.getStartEndLocators());
-            window.requestAnimationFrame(_this.animatePlayback);
+            var lastPlaybackLocators = _this.getStartEndLocators();
+            _this.setState({ lastPlaybackLocators: lastPlaybackLocators }, function () {
+                _this.loopr.play(lastPlaybackLocators);
+                if (!_this.isPlaying) {
+                    _this.isPlaying = true;
+                    window.requestAnimationFrame(_this.animatePlayback);
+                }
+            });
+        };
+        _this.stopPlayback = function () {
+            _this.loopr.stop();
+            _this.isPlaying = false;
         };
         _this.animatePlayback = function () {
-            if (_this.loopr.currentPlaybackTime !== null) {
+            _this.draw();
+            if (_this.isPlaying) {
                 window.requestAnimationFrame(_this.animatePlayback);
             }
         };
@@ -33373,8 +33419,9 @@ var LooprInterface = /** @class */ (function (_super) {
         var context = this.canvas.getContext('2d');
         var width = this.props.width;
         context.clearRect(0, 0, width, CANVAS_HEIGHT);
-        this.plotWaveform(context, width);
+        this.drawWaveform(context, width);
         this.drawLocators(context, width);
+        this.drawPlaybackProgress(context, width);
     };
     return LooprInterface;
 }(React.Component));
