@@ -7,9 +7,9 @@ const CANVAS_HEIGHT = 200;
 const PLAYBACK_BAR_WIDTH = 5;
 const MIN_LOOP_PERCENT = 0.001;
 
-interface Locators {
-    startLocatorPercent: number;
-    endLocatorPercent: number;
+export interface Locators {
+    startPercent?: number;
+    endPercent?: number;
 }
 
 interface LooprViewProps {
@@ -24,13 +24,13 @@ interface LooprViewState {
     rightChannelData: Float32Array;
     lowPeak: number;
     highPeak: number;
-    locator1Percent: number;
-    locator2Percent: number;
     isMouseDown: boolean;
     lastPlaybackLocators: Locators; // TODO: draw these too, so locators stay present even if user alters locators during playback...
+    zoomLocators: Locators;
+    playbackLocators: Locators;
 }
 
-class LooprInterface extends React.Component<LooprViewProps, LooprViewState> {
+class LooprInterface extends React.Component<LooprViewProps, Partial<LooprViewState>> {
     private canvas: HTMLCanvasElement = null;
     private loopr: Loopr = null;
     private isPlaying: boolean = false;
@@ -38,12 +38,13 @@ class LooprInterface extends React.Component<LooprViewProps, LooprViewState> {
     constructor(props: LooprViewProps) {
         super(props);
         this.loopr = props.loopr;
+        this.state = { playbackLocators: {} };
     }
 
     public componentWillMount() {
         const { audioBuffer, loopr } = this.props;
         if (audioBuffer) {
-            this.hydrateChannelData(audioBuffer);
+            this.setChannelData(audioBuffer);
         }
     }
 
@@ -60,10 +61,8 @@ class LooprInterface extends React.Component<LooprViewProps, LooprViewState> {
     }
 
     public componentWillReceiveProps(nextProps: LooprViewProps) {
-        const { audioBuffer: currBuffer, width: prevWidth } = this.props;
-        const { audioBuffer: nextBuffer, width: nextWidth } = nextProps;
-        if (nextBuffer !== currBuffer) {
-            this.hydrateChannelData(nextBuffer);
+        if (nextProps.audioBuffer !== this.props.audioBuffer) {
+            this.setChannelData(nextProps.audioBuffer);
         }
     }
 
@@ -111,30 +110,47 @@ class LooprInterface extends React.Component<LooprViewProps, LooprViewState> {
         const { left } = this.canvas.getBoundingClientRect();
         const x = e.clientX - left;
         if (e.shiftKey) {
-
+            // no-op for now
         } else {
-            this.setState({ locator1Percent: x / width, isMouseDown: true, locator2Percent: null });
+            this.setState({
+                isMouseDown: true,
+                playbackLocators: {
+                    startPercent: x / width,
+                    endPercent: null,
+                },
+            });
         }
     }
 
     private onMouseMove = (e: MouseEvent) => {
-        const { locator1Percent, isMouseDown } = this.state;
+        const { playbackLocators: { startPercent }, isMouseDown } = this.state;
         if (isMouseDown) {
             const { width } = this.props;
             const { left } = this.canvas.getBoundingClientRect();
             const x = e.clientX - left;
-            const locator2Percent = x / width;
-            this.setState({ locator2Percent: Math.abs(locator1Percent - locator2Percent) > MIN_LOOP_PERCENT ? locator2Percent : null });
+            const endPercent = x / width;
+            this.setState({
+                playbackLocators: {
+                    startPercent,
+                    endPercent: Math.abs(startPercent - endPercent) > MIN_LOOP_PERCENT ? endPercent : null,
+                },
+            });
         }
     }
 
     private onMouseUp = (e: MouseEvent) => {
         const { width } = this.props;
-        const { locator1Percent } = this.state;
+        const { playbackLocators: { startPercent } } = this.state;
         const { left } = this.canvas.getBoundingClientRect();
         const x = e.clientX - left;
-        const locator2Percent = x / width;
-        this.setState({ isMouseDown: false, locator2Percent: Math.abs(locator1Percent - locator2Percent) > MIN_LOOP_PERCENT ? locator2Percent : null });
+        const endPercent = x / width;
+        this.setState({
+            isMouseDown: false,
+            playbackLocators: {
+                startPercent,
+                endPercent: Math.abs(startPercent - endPercent) > MIN_LOOP_PERCENT ? endPercent : null,
+            },
+        });
     }
 
     private onKeyDown = (e: KeyboardEvent) => {
@@ -170,19 +186,23 @@ class LooprInterface extends React.Component<LooprViewProps, LooprViewState> {
         window.removeEventListener('mousemove', this.onMouseMove);
     }
 
-    private hydrateChannelData = (audioBuffer: AudioBuffer, callback?: () => void) => {
-        const leftChannelData = audioBuffer.getChannelData(0);
-        const rightChannelData = audioBuffer.numberOfChannels > 1 ? audioBuffer.getChannelData(1) : null;
-        const { lowPeak, highPeak } = this.getPeaks(leftChannelData, rightChannelData || []);
+    private setChannelData = (audioBuffer: AudioBuffer, { startPercent = 0, endPercent = 1 }: Locators = {} as Locators) => {
+        const getSubArray = (channelData: Float32Array): Float32Array => channelData.slice(
+            Math.round(channelData.length * startPercent),
+            Math.round(channelData.length * endPercent),
+        );
+        const leftChannelData = getSubArray(audioBuffer.getChannelData(0));
+        const rightChannelData = audioBuffer.numberOfChannels > 1 ? getSubArray(audioBuffer.getChannelData(1)) : null;
+        const { lowPeak, highPeak } = this.getPeaks(leftChannelData, rightChannelData || undefined);
         this.setState({
             leftChannelData,
             rightChannelData,
             lowPeak,
             highPeak,
-        }, callback);
+        });
     }
 
-    private getPeaks = (...channels): { highPeak: number, lowPeak: number } => {
+    private getPeaks = (...channels: Float32Array[]): { highPeak: number, lowPeak: number } => {
         let lowPeak = 0;
         let highPeak = 0;
         channels.forEach(channelData => channelData.forEach(amplitude => {
@@ -203,7 +223,6 @@ class LooprInterface extends React.Component<LooprViewProps, LooprViewState> {
         const NORMALIZE_FACTOR = CANVAS_HEIGHT / peak;
         const DECIMATION_FACTOR = leftChannelData.length / pixelCount;
         context.fillStyle = Color.DARK_BLUE;
-        context.fillRect(0, MID_Y, width, 1);
         for (let i = 0; i < width; i += 0.5) {
             const amplitude = Math.abs(leftChannelData[Math.round((i * 2) * DECIMATION_FACTOR)] * NORMALIZE_FACTOR);
             context.fillRect(i, MID_Y - amplitude, 0.5, amplitude * 2);
@@ -211,13 +230,13 @@ class LooprInterface extends React.Component<LooprViewProps, LooprViewState> {
     }
 
     private drawLocators = (context: CanvasRenderingContext2D, width: number) => {
-        const { startLocatorPercent, endLocatorPercent } = this.getStartEndLocators();
-        if (startLocatorPercent !== null) {
+        const { startPercent, endPercent } = this.getStartEndLocators();
+        if (startPercent !== null) {
             context.fillStyle = Color.CURSOR_COLOR;
-            const leftLocatorX = width * startLocatorPercent;
+            const leftLocatorX = width * startPercent;
             context.fillRect(leftLocatorX, 0, 1, CANVAS_HEIGHT);
-            if (endLocatorPercent !== null) {
-                const rightLocatorX = width * endLocatorPercent;
+            if (endPercent !== null) {
+                const rightLocatorX = width * endPercent;
                 context.fillRect(rightLocatorX, 0, 1, CANVAS_HEIGHT);
                 context.fillStyle = Color.SELECTION_COLOR;
                 const startX = leftLocatorX + 1;
@@ -229,19 +248,19 @@ class LooprInterface extends React.Component<LooprViewProps, LooprViewState> {
 
     private drawPlaybackProgress = (context: CanvasRenderingContext2D, width: number) => {
         if (this.loopr.currentPlaybackTime === null) { return; }
-        const { lastPlaybackLocators: { startLocatorPercent, endLocatorPercent } } = this.state;
-        const isLoop = startLocatorPercent !== null && endLocatorPercent !== null;
+        const { lastPlaybackLocators: { startPercent, endPercent } } = this.state;
+        const isLoop = startPercent !== null && endPercent !== null;
         const progressPercent = this.loopr.currentPlaybackTime / this.loopr.duration;
-        const progressWidth = width * progressPercent % (isLoop ? (width * endLocatorPercent) - (width * startLocatorPercent) : width);
+        const progressWidth = width * progressPercent % (isLoop ? (width * endPercent) - (width * startPercent) : width);
         context.fillStyle = Color.SELECTION_COLOR;
-        context.fillRect((width * startLocatorPercent), 0, progressWidth, CANVAS_HEIGHT);
+        context.fillRect((width * startPercent), 0, progressWidth, CANVAS_HEIGHT);
     }
 
     private getStartEndLocators = (): Locators => {
-        const { locator1Percent, locator2Percent } = this.state;
-        const startLocatorPercent = (locator2Percent === null) || (locator1Percent <= locator2Percent) ? locator1Percent : locator2Percent;
-        const endLocatorPercent = startLocatorPercent === locator1Percent ? locator2Percent : locator1Percent;
-        return { startLocatorPercent, endLocatorPercent };
+        const { playbackLocators: { startPercent: locator1Percent, endPercent: locator2Percent } } = this.state;
+        const startPercent = (locator2Percent === null) || (locator1Percent <= locator2Percent) ? locator1Percent : locator2Percent;
+        const endPercent = startPercent === locator1Percent ? locator2Percent : locator1Percent;
+        return { startPercent, endPercent };
     }
 
     private startPlayback = () => {

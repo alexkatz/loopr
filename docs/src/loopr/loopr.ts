@@ -1,3 +1,5 @@
+import { Locators } from './LooprInterface';
+
 type AudioBufferChangedHandler = (buffer: AudioBuffer) => void;
 
 export type RemoveListener = () => void;
@@ -40,7 +42,9 @@ export class Loopr {
 
     public setAudioFile = (file: File) => {
         const fileReader = new FileReader();
-        fileReader.onloadend = async () => this.buffer = await this.audioContext.decodeAudioData(fileReader.result);
+        fileReader.onloadend = async () => {
+            this.buffer = await this.audioContext.decodeAudioData(fileReader.result);
+        };
         fileReader.readAsArrayBuffer(file);
     }
 
@@ -52,14 +56,14 @@ export class Loopr {
         };
     }
 
-    public play = ({ startLocatorPercent = 0, endLocatorPercent }) => {
+    public play = ({ startPercent = 0, endPercent }: Locators) => {
         if (this.source) { this.source.stop(); }
         this.source = this.audioContext.createBufferSource();
         this.source.buffer = this.internalBuffer;
         this.source.connect(this.audioContext.destination);
-        const startSeconds = this.internalBuffer.duration * startLocatorPercent;
-        if (endLocatorPercent != null) {
-            const endSeconds = this.internalBuffer.duration * endLocatorPercent;
+        const startSeconds = this.internalBuffer.duration * startPercent;
+        if (endPercent != null) {
+            const endSeconds = this.internalBuffer.duration * endPercent;
             this.source.loopStart = startSeconds;
             this.source.loopEnd = endSeconds;
             this.source.loop = true;
