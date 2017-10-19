@@ -40,7 +40,7 @@ export class Loopr {
 
     public setAudioFile = (file: File) => {
         const fileReader = new FileReader();
-        fileReader.onloadend = () => this.audioContext.decodeAudioData(fileReader.result, buffer => this.buffer = buffer);
+        fileReader.onloadend = async () => this.buffer = await this.audioContext.decodeAudioData(fileReader.result);
         fileReader.readAsArrayBuffer(file);
     }
 
