@@ -5,7 +5,8 @@ export const Constant = {
     },
     PADDING: 8,
     Key: {
-        SPACE: ' ',
-        SHIFT: 'Shift',
+        SPACE: 32,
+        SHIFT: 16,
+        Z: 90,
     },
 };

@@ -12,14 +12,14 @@ export interface Locators {
     endPercent?: number;
 }
 
-interface LooprViewProps {
+interface LooprInterfaceProps {
     width: number;
     height: number;
     audioBuffer?: AudioBuffer;
     loopr: Loopr;
 }
 
-interface LooprViewState {
+interface LooprInterfaceState {
     leftChannelData: Float32Array;
     rightChannelData: Float32Array;
     lowPeak: number;
@@ -30,15 +30,15 @@ interface LooprViewState {
     playbackLocators: Locators;
 }
 
-class LooprInterface extends React.Component<LooprViewProps, Partial<LooprViewState>> {
+class LooprInterface extends React.Component<LooprInterfaceProps, Partial<LooprInterfaceState>> {
     private canvas: HTMLCanvasElement = null;
     private loopr: Loopr = null;
     private isPlaying: boolean = false;
 
-    constructor(props: LooprViewProps) {
+    constructor(props: LooprInterfaceProps) {
         super(props);
         this.loopr = props.loopr;
-        this.state = { playbackLocators: {} };
+        this.state = { playbackLocators: { startPercent: 0, endPercent: 1 } };
     }
 
     public componentWillMount() {
@@ -60,13 +60,13 @@ class LooprInterface extends React.Component<LooprViewProps, Partial<LooprViewSt
         window.removeEventListener('keydown', this.onKeyDown);
     }
 
-    public componentWillReceiveProps(nextProps: LooprViewProps) {
+    public componentWillReceiveProps(nextProps: LooprInterfaceProps) {
         if (nextProps.audioBuffer !== this.props.audioBuffer) {
             this.setChannelData(nextProps.audioBuffer);
         }
     }
 
-    public componentDidUpdate(prevProps: LooprViewProps) {
+    public componentDidUpdate() {
         this.draw();
     }
 
@@ -107,61 +107,66 @@ class LooprInterface extends React.Component<LooprViewProps, Partial<LooprViewSt
 
     private onMouseDown: React.MouseEventHandler<HTMLCanvasElement> = e => {
         const { width } = this.props;
+        const { playbackLocators: { startPercent } } = this.state;
         const { left } = this.canvas.getBoundingClientRect();
         const x = e.clientX - left;
+        const newStartPercent = x / width;
+        const isRemovingStartLocator = Math.abs(startPercent - newStartPercent) <= MIN_LOOP_PERCENT;
         if (e.shiftKey) {
             // no-op for now
         } else {
             this.setState({
                 isMouseDown: true,
                 playbackLocators: {
-                    startPercent: x / width,
-                    endPercent: null,
+                    startPercent: isRemovingStartLocator ? 0 : newStartPercent,
+                    endPercent: 1,
                 },
-            });
+            }, () => isRemovingStartLocator && this.stopPlayback());
         }
     }
 
     private onMouseMove = (e: MouseEvent) => {
-        const { playbackLocators: { startPercent }, isMouseDown } = this.state;
-        if (isMouseDown) {
-            const { width } = this.props;
-            const { left } = this.canvas.getBoundingClientRect();
-            const x = e.clientX - left;
-            const endPercent = x / width;
-            this.setState({
-                playbackLocators: {
-                    startPercent,
-                    endPercent: Math.abs(startPercent - endPercent) > MIN_LOOP_PERCENT ? endPercent : null,
-                },
-            });
+        const { playbackLocators, isMouseDown } = this.state;
+        if (isMouseDown && playbackLocators) {
+            this.handleMouse(e.clientX, playbackLocators.startPercent);
         }
     }
 
     private onMouseUp = (e: MouseEvent) => {
+        const { playbackLocators } = this.state;
+        if (playbackLocators) {
+            this.handleMouse(e.clientX, playbackLocators.startPercent, true);
+        }
+    }
+
+    private handleMouse = (clientX: number, startPercent: number, isMouseUp = false) => {
         const { width } = this.props;
-        const { playbackLocators: { startPercent } } = this.state;
         const { left } = this.canvas.getBoundingClientRect();
-        const x = e.clientX - left;
+        const x = clientX - left;
         const endPercent = x / width;
         this.setState({
-            isMouseDown: false,
+            isMouseDown: !isMouseUp,
             playbackLocators: {
                 startPercent,
-                endPercent: Math.abs(startPercent - endPercent) > MIN_LOOP_PERCENT ? endPercent : null,
+                endPercent: Math.abs(startPercent - endPercent) > MIN_LOOP_PERCENT ? endPercent : 1,
             },
-        });
+        }, () => this.isPlaying && isMouseUp && this.startPlayback());
     }
 
     private onKeyDown = (e: KeyboardEvent) => {
-        e.preventDefault();
-        e.stopPropagation();
-        if (e.key === Constant.Key.SHIFT) {
-            // no-op for now
-        } else if (e.key === Constant.Key.SPACE) {
-            this.startPlayback();
-        } else {
-            this.loopr.stop();
+        if (!e.metaKey) {
+            e.preventDefault();
+            e.stopPropagation();
+            switch (e.keyCode) {
+                case Constant.Key.SHIFT:
+                    break;
+                case Constant.Key.Z:
+                    return this.setChannelData(this.props.audioBuffer, this.getRelativeLocators());
+                case Constant.Key.SPACE:
+                    return this.startPlayback();
+                default:
+                    return this.stopPlayback();
+            }
         }
     }
 
@@ -199,6 +204,8 @@ class LooprInterface extends React.Component<LooprViewProps, Partial<LooprViewSt
             rightChannelData,
             lowPeak,
             highPeak,
+            zoomLocators: { startPercent, endPercent },
+            playbackLocators: { startPercent: 0, endPercent: 1 },
         });
     }
 
@@ -230,12 +237,12 @@ class LooprInterface extends React.Component<LooprViewProps, Partial<LooprViewSt
     }
 
     private drawLocators = (context: CanvasRenderingContext2D, width: number) => {
-        const { startPercent, endPercent } = this.getStartEndLocators();
-        if (startPercent !== null) {
+        const { startPercent, endPercent } = this.getRelativeLocators();
+        if (startPercent > 0) {
             context.fillStyle = Color.CURSOR_COLOR;
             const leftLocatorX = width * startPercent;
             context.fillRect(leftLocatorX, 0, 1, CANVAS_HEIGHT);
-            if (endPercent !== null) {
+            if (endPercent < 1) {
                 const rightLocatorX = width * endPercent;
                 context.fillRect(rightLocatorX, 0, 1, CANVAS_HEIGHT);
                 context.fillStyle = Color.SELECTION_COLOR;
@@ -248,25 +255,33 @@ class LooprInterface extends React.Component<LooprViewProps, Partial<LooprViewSt
 
     private drawPlaybackProgress = (context: CanvasRenderingContext2D, width: number) => {
         if (this.loopr.currentPlaybackTime === null) { return; }
-        const { lastPlaybackLocators: { startPercent, endPercent } } = this.state;
-        const isLoop = startPercent !== null && endPercent !== null;
+        const { lastPlaybackLocators, zoomLocators: { startPercent: zoomStartPercent, endPercent: zoomEndPercent } } = this.state;
+        const { startPercent: trueLocatorStartPercent, endPercent: trueLocatorEndPercent } = this.getTrueLocators(lastPlaybackLocators);
+        const { startPercent: relativeLocatorStartPercent } = this.getRelativeLocators(lastPlaybackLocators);
+        const zoomFactor = 1 / (zoomEndPercent - zoomStartPercent);
         const progressPercent = this.loopr.currentPlaybackTime / this.loopr.duration;
-        const progressWidth = width * progressPercent % (isLoop ? (width * endPercent) - (width * startPercent) : width);
+        const progressWidth = (width * progressPercent) % ((width * trueLocatorEndPercent) - (width * trueLocatorStartPercent));
         context.fillStyle = Color.SELECTION_COLOR;
-        context.fillRect((width * startPercent), 0, progressWidth, CANVAS_HEIGHT);
+        context.fillRect((width * relativeLocatorStartPercent), 0, progressWidth * zoomFactor, CANVAS_HEIGHT);
     }
 
-    private getStartEndLocators = (): Locators => {
-        const { playbackLocators: { startPercent: locator1Percent, endPercent: locator2Percent } } = this.state;
+    private getRelativeLocators = ({ startPercent: locator1Percent, endPercent: locator2Percent }: Locators = this.state.playbackLocators): Locators => {
         const startPercent = (locator2Percent === null) || (locator1Percent <= locator2Percent) ? locator1Percent : locator2Percent;
         const endPercent = startPercent === locator1Percent ? locator2Percent : locator1Percent;
         return { startPercent, endPercent };
     }
 
+    private getTrueLocators = ({ startPercent, endPercent }: Locators): Locators => {
+        const { zoomLocators: { startPercent: zoomStart, endPercent: zoomEnd } } = this.state;
+        const trueStart = zoomStart + ((zoomEnd - zoomStart) * startPercent);
+        const trueEnd = zoomStart + ((zoomEnd - zoomStart) * endPercent);
+        return { startPercent: trueStart, endPercent: trueEnd };
+    }
+
     private startPlayback = () => {
-        const lastPlaybackLocators = this.getStartEndLocators();
+        const lastPlaybackLocators = this.getRelativeLocators();
         this.setState({ lastPlaybackLocators }, () => {
-            this.loopr.play(lastPlaybackLocators);
+            this.loopr.play(this.getTrueLocators(lastPlaybackLocators));
             if (!this.isPlaying) {
                 this.isPlaying = true;
                 window.requestAnimationFrame(this.animatePlayback);

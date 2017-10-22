@@ -56,18 +56,16 @@ export class Loopr {
         };
     }
 
-    public play = ({ startPercent = 0, endPercent }: Locators) => {
+    public play = ({ startPercent, endPercent }: Locators) => {
         if (this.source) { this.source.stop(); }
         this.source = this.audioContext.createBufferSource();
         this.source.buffer = this.internalBuffer;
         this.source.connect(this.audioContext.destination);
         const startSeconds = this.internalBuffer.duration * startPercent;
-        if (endPercent != null) {
-            const endSeconds = this.internalBuffer.duration * endPercent;
-            this.source.loopStart = startSeconds;
-            this.source.loopEnd = endSeconds;
-            this.source.loop = true;
-        }
+        const endSeconds = this.internalBuffer.duration * endPercent;
+        this.source.loopStart = startSeconds;
+        this.source.loopEnd = endSeconds;
+        this.source.loop = true;
         this.startedAt = this.audioContext.currentTime;
         this.source.start(0, startSeconds);
     }
