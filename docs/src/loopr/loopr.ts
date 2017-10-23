@@ -75,4 +75,13 @@ export class Loopr {
         this.startedAt = null;
         this.source = null;
     }
+
+    public setLoopFromLocators = ({ startPercent, endPercent }: Locators) => {
+        if (this.source && this.startedAt !== null) {
+            const startSeconds = this.internalBuffer.duration * startPercent;
+            const endSeconds = this.internalBuffer.duration * endPercent;
+            this.source.loopStart = startSeconds;
+            this.source.loopEnd = endSeconds;
+        }
+    }
 }

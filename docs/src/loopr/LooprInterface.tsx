@@ -199,6 +199,8 @@ class LooprInterface extends React.Component<LooprInterfaceProps, Partial<LooprI
         const leftChannelData = getSubArray(audioBuffer.getChannelData(0));
         const rightChannelData = audioBuffer.numberOfChannels > 1 ? getSubArray(audioBuffer.getChannelData(1)) : null;
         const { lowPeak, highPeak } = this.getPeaks(leftChannelData, rightChannelData || undefined);
+        let { lastPlaybackLocators } = this.state;
+        if (this.isPlaying) { lastPlaybackLocators = { startPercent: 0, endPercent: 1 }; }
         this.setState({
             leftChannelData,
             rightChannelData,
@@ -206,6 +208,7 @@ class LooprInterface extends React.Component<LooprInterfaceProps, Partial<LooprI
             highPeak,
             zoomLocators: { startPercent, endPercent },
             playbackLocators: { startPercent: 0, endPercent: 1 },
+            lastPlaybackLocators,
         });
     }
 
@@ -278,11 +281,13 @@ class LooprInterface extends React.Component<LooprInterfaceProps, Partial<LooprI
         return { startPercent: trueStart, endPercent: trueEnd };
     }
 
-    private startPlayback = () => {
+    private startPlayback = (continuePlayback = false) => {
         const lastPlaybackLocators = this.getRelativeLocators();
         this.setState({ lastPlaybackLocators }, () => {
-            this.loopr.play(this.getTrueLocators(lastPlaybackLocators));
-            if (!this.isPlaying) {
+            if (this.isPlaying && continuePlayback) {
+                this.loopr.setLoopFromLocators(this.getTrueLocators(lastPlaybackLocators));
+            } else {
+                this.loopr.play(this.getTrueLocators(lastPlaybackLocators));
                 this.isPlaying = true;
                 window.requestAnimationFrame(this.animatePlayback);
             }
