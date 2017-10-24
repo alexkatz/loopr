@@ -288,8 +288,10 @@ class LooprInterface extends React.Component<LooprInterfaceProps, Partial<LooprI
                 this.loopr.setLoopFromLocators(this.getTrueLocators(lastPlaybackLocators));
             } else {
                 this.loopr.play(this.getTrueLocators(lastPlaybackLocators));
-                this.isPlaying = true;
-                window.requestAnimationFrame(this.animatePlayback);
+                if (!this.isPlaying) {
+                    this.isPlaying = true;
+                    window.requestAnimationFrame(this.animatePlayback);
+                }
             }
         });
     }
