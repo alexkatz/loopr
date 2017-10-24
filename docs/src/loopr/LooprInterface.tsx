@@ -3,7 +3,7 @@ import { Color } from '../shared/colors';
 import { Constant } from '../shared/constants';
 import { Loopr } from './loopr';
 
-const CANVAS_HEIGHT = 200;
+const CANVAS_HEIGHT = 800;
 const PLAYBACK_BAR_WIDTH = 5;
 const MIN_LOOP_PERCENT = 0.001;
 
@@ -161,7 +161,7 @@ class LooprInterface extends React.Component<LooprInterfaceProps, Partial<LooprI
                 case Constant.Key.SHIFT:
                     break;
                 case Constant.Key.Z:
-                    return this.setChannelData(this.props.audioBuffer, this.getRelativeLocators());
+                    return this.setChannelData(this.props.audioBuffer, e.shiftKey ? { startPercent: 0, endPercent: 1 } : this.getTrueLocators(this.getRelativeLocators()));
                 case Constant.Key.SPACE:
                     return this.startPlayback();
                 default:
@@ -226,17 +226,22 @@ class LooprInterface extends React.Component<LooprInterfaceProps, Partial<LooprI
     private roundHalf = x => Math.round(x * 2) / 2;
 
     private drawWaveform = (context: CanvasRenderingContext2D, width: number) => { // TODO: color waveform differently when within loop boundaries or playback progress boundaries...
-        const pixelCount = width * 2;
         const { leftChannelData, rightChannelData, lowPeak, highPeak } = this.state;
-        const MID_Y = CANVAS_HEIGHT / 2;
+        const pixelCount = width * 2;
         const peak = Math.max(Math.abs(lowPeak), highPeak);
-        const NORMALIZE_FACTOR = CANVAS_HEIGHT / peak;
-        const DECIMATION_FACTOR = leftChannelData.length / pixelCount;
-        context.fillStyle = Color.DARK_BLUE;
-        for (let i = 0; i < width; i += 0.5) {
-            const amplitude = Math.abs(leftChannelData[Math.round((i * 2) * DECIMATION_FACTOR)] * NORMALIZE_FACTOR);
-            context.fillRect(i, MID_Y - amplitude, 0.5, amplitude * 2);
-        }
+        const NORMALIZE_FACTOR = (rightChannelData ? CANVAS_HEIGHT * 0.25 : CANVAS_HEIGHT * 0.5) / peak;
+
+        const drawChannel = (channelData, midY) => {
+            const DECIMATION_FACTOR = channelData.length / pixelCount;
+            context.fillStyle = Color.DARK_BLUE;
+            for (let i = 0; i < width; i += 0.5) {
+                const amplitude = Math.abs(channelData[Math.round((i * 2) * DECIMATION_FACTOR)] * NORMALIZE_FACTOR);
+                context.fillRect(i, midY - amplitude, 0.5, amplitude * 2);
+            }
+        };
+
+        drawChannel(leftChannelData, rightChannelData ? CANVAS_HEIGHT * 0.25 : CANVAS_HEIGHT * 0.5);
+        if (rightChannelData) { drawChannel(rightChannelData, CANVAS_HEIGHT * 0.75); }
     }
 
     private drawLocators = (context: CanvasRenderingContext2D, width: number) => {
