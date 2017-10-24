@@ -3,9 +3,11 @@ import { Color } from '../shared/colors';
 import { Constant } from '../shared/constants';
 import { Loopr } from './loopr';
 
-const CANVAS_HEIGHT = 800;
 const PLAYBACK_BAR_WIDTH = 5;
+const HEADER_HEIGHT = 70;
+const CANVAS_HEIGHT_PERCENT = 0.7;
 const MIN_LOOP_PERCENT = 0.001;
+const GET_CANVAS_HEIGHT = height => (height - HEADER_HEIGHT) * CANVAS_HEIGHT_PERCENT;
 
 export interface Locators {
     startPercent?: number;
@@ -20,6 +22,7 @@ interface LooprInterfaceProps {
 }
 
 interface LooprInterfaceState {
+    canvasHeight: number;
     leftChannelData: Float32Array;
     rightChannelData: Float32Array;
     lowPeak: number;
@@ -38,7 +41,10 @@ class LooprInterface extends React.Component<LooprInterfaceProps, Partial<LooprI
     constructor(props: LooprInterfaceProps) {
         super(props);
         this.loopr = props.loopr;
-        this.state = { playbackLocators: { startPercent: 0, endPercent: 1 } };
+        this.state = {
+            playbackLocators: { startPercent: 0, endPercent: 1 },
+            canvasHeight: GET_CANVAS_HEIGHT(props.height),
+        };
     }
 
     public componentWillMount() {
@@ -61,8 +67,12 @@ class LooprInterface extends React.Component<LooprInterfaceProps, Partial<LooprI
     }
 
     public componentWillReceiveProps(nextProps: LooprInterfaceProps) {
-        if (nextProps.audioBuffer !== this.props.audioBuffer) {
+        const { audioBuffer, height } = this.props;
+        if (nextProps.audioBuffer !== audioBuffer) {
             this.setChannelData(nextProps.audioBuffer);
+        }
+        if (height !== nextProps.height) {
+            this.setState({ canvasHeight: GET_CANVAS_HEIGHT(nextProps.height) });
         }
     }
 
@@ -72,6 +82,7 @@ class LooprInterface extends React.Component<LooprInterfaceProps, Partial<LooprI
 
     public render() {
         const { width, height } = this.props;
+        const { canvasHeight } = this.state;
         return (
             <div
                 style={{
@@ -84,7 +95,10 @@ class LooprInterface extends React.Component<LooprInterfaceProps, Partial<LooprI
                         color: Color.MID_BLUE,
                         fontWeight: Constant.FontWeight.REGULAR,
                         fontSize: 30,
-                        padding: Constant.PADDING,
+                        height: HEADER_HEIGHT,
+                        display: 'flex',
+                        alignItems: 'center',
+                        paddingLeft: Constant.PADDING,
                     }}
                 >
                     Loopr
@@ -92,7 +106,7 @@ class LooprInterface extends React.Component<LooprInterfaceProps, Partial<LooprI
                 <canvas
                     ref={canvas => this.canvas = canvas}
                     width={width}
-                    height={CANVAS_HEIGHT}
+                    height={canvasHeight}
                     style={{
                         backgroundColor: Color.MID_BLUE,
                         cursor: 'text',
@@ -175,7 +189,8 @@ class LooprInterface extends React.Component<LooprInterfaceProps, Partial<LooprI
     private draw() {
         const context = this.canvas.getContext('2d');
         const { width } = this.props;
-        context.clearRect(0, 0, width, CANVAS_HEIGHT);
+        const { canvasHeight } = this.state;
+        context.clearRect(0, 0, width, canvasHeight);
         this.drawWaveform(context, width);
         this.drawLocators(context, width);
         this.drawPlaybackProgress(context, width);
@@ -226,10 +241,10 @@ class LooprInterface extends React.Component<LooprInterfaceProps, Partial<LooprI
     private roundHalf = x => Math.round(x * 2) / 2;
 
     private drawWaveform = (context: CanvasRenderingContext2D, width: number) => { // TODO: color waveform differently when within loop boundaries or playback progress boundaries...
-        const { leftChannelData, rightChannelData, lowPeak, highPeak } = this.state;
+        const { leftChannelData, rightChannelData, lowPeak, highPeak, canvasHeight } = this.state;
         const pixelCount = width * 2;
         const peak = Math.max(Math.abs(lowPeak), highPeak);
-        const NORMALIZE_FACTOR = (rightChannelData ? CANVAS_HEIGHT * 0.25 : CANVAS_HEIGHT * 0.5) / peak;
+        const NORMALIZE_FACTOR = (rightChannelData ? canvasHeight * 0.25 : canvasHeight * 0.5) / peak;
 
         const drawChannel = (channelData, midY) => {
             const DECIMATION_FACTOR = channelData.length / pixelCount;
@@ -240,37 +255,38 @@ class LooprInterface extends React.Component<LooprInterfaceProps, Partial<LooprI
             }
         };
 
-        drawChannel(leftChannelData, rightChannelData ? CANVAS_HEIGHT * 0.25 : CANVAS_HEIGHT * 0.5);
-        if (rightChannelData) { drawChannel(rightChannelData, CANVAS_HEIGHT * 0.75); }
+        drawChannel(leftChannelData, rightChannelData ? canvasHeight * 0.25 : canvasHeight * 0.5);
+        if (rightChannelData) { drawChannel(rightChannelData, canvasHeight * 0.75); }
     }
 
     private drawLocators = (context: CanvasRenderingContext2D, width: number) => {
         const { startPercent, endPercent } = this.getRelativeLocators();
+        const { canvasHeight } = this.state;
         if (startPercent > 0) {
             context.fillStyle = Color.CURSOR_COLOR;
             const leftLocatorX = width * startPercent;
-            context.fillRect(leftLocatorX, 0, 1, CANVAS_HEIGHT);
+            context.fillRect(leftLocatorX, 0, 1, canvasHeight);
             if (endPercent < 1) {
                 const rightLocatorX = width * endPercent;
-                context.fillRect(rightLocatorX, 0, 1, CANVAS_HEIGHT);
+                context.fillRect(rightLocatorX, 0, 1, canvasHeight);
                 context.fillStyle = Color.SELECTION_COLOR;
                 const startX = leftLocatorX + 1;
                 const endX = rightLocatorX;
-                context.fillRect(startX, 0, endX - startX, CANVAS_HEIGHT);
+                context.fillRect(startX, 0, endX - startX, canvasHeight);
             }
         }
     }
 
     private drawPlaybackProgress = (context: CanvasRenderingContext2D, width: number) => {
         if (this.loopr.currentPlaybackTime === null) { return; }
-        const { lastPlaybackLocators, zoomLocators: { startPercent: zoomStartPercent, endPercent: zoomEndPercent } } = this.state;
+        const { lastPlaybackLocators, canvasHeight, zoomLocators: { startPercent: zoomStartPercent, endPercent: zoomEndPercent } } = this.state;
         const { startPercent: trueLocatorStartPercent, endPercent: trueLocatorEndPercent } = this.getTrueLocators(lastPlaybackLocators);
         const { startPercent: relativeLocatorStartPercent } = this.getRelativeLocators(lastPlaybackLocators);
         const zoomFactor = 1 / (zoomEndPercent - zoomStartPercent);
         const progressPercent = this.loopr.currentPlaybackTime / this.loopr.duration;
         const progressWidth = (width * progressPercent) % ((width * trueLocatorEndPercent) - (width * trueLocatorStartPercent));
         context.fillStyle = Color.SELECTION_COLOR;
-        context.fillRect((width * relativeLocatorStartPercent), 0, progressWidth * zoomFactor, CANVAS_HEIGHT);
+        context.fillRect((width * relativeLocatorStartPercent), 0, progressWidth * zoomFactor, canvasHeight);
     }
 
     private getRelativeLocators = ({ startPercent: locator1Percent, endPercent: locator2Percent }: Locators = this.state.playbackLocators): Locators => {
