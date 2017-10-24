@@ -33265,9 +33265,11 @@ Object.defineProperty(exports, "__esModule", { value: true });
 var React = __webpack_require__(1);
 var colors_1 = __webpack_require__(65);
 var constants_1 = __webpack_require__(108);
-var CANVAS_HEIGHT = 800;
 var PLAYBACK_BAR_WIDTH = 5;
+var HEADER_HEIGHT = 70;
+var CANVAS_HEIGHT_PERCENT = 0.7;
 var MIN_LOOP_PERCENT = 0.001;
+var GET_CANVAS_HEIGHT = function (height) { return (height - HEADER_HEIGHT) * CANVAS_HEIGHT_PERCENT; };
 var LooprInterface = /** @class */ (function (_super) {
     __extends(LooprInterface, _super);
     function LooprInterface(props) {
@@ -33386,10 +33388,10 @@ var LooprInterface = /** @class */ (function (_super) {
         _this.log10 = function (x) { return Math.log(x) * Math.LOG10E; };
         _this.roundHalf = function (x) { return Math.round(x * 2) / 2; };
         _this.drawWaveform = function (context, width) {
-            var _a = _this.state, leftChannelData = _a.leftChannelData, rightChannelData = _a.rightChannelData, lowPeak = _a.lowPeak, highPeak = _a.highPeak;
+            var _a = _this.state, leftChannelData = _a.leftChannelData, rightChannelData = _a.rightChannelData, lowPeak = _a.lowPeak, highPeak = _a.highPeak, canvasHeight = _a.canvasHeight;
             var pixelCount = width * 2;
             var peak = Math.max(Math.abs(lowPeak), highPeak);
-            var NORMALIZE_FACTOR = (rightChannelData ? CANVAS_HEIGHT * 0.25 : CANVAS_HEIGHT * 0.5) / peak;
+            var NORMALIZE_FACTOR = (rightChannelData ? canvasHeight * 0.25 : canvasHeight * 0.5) / peak;
             var drawChannel = function (channelData, midY) {
                 var DECIMATION_FACTOR = channelData.length / pixelCount;
                 context.fillStyle = colors_1.Color.DARK_BLUE;
@@ -33398,24 +33400,25 @@ var LooprInterface = /** @class */ (function (_super) {
                     context.fillRect(i, midY - amplitude, 0.5, amplitude * 2);
                 }
             };
-            drawChannel(leftChannelData, rightChannelData ? CANVAS_HEIGHT * 0.25 : CANVAS_HEIGHT * 0.5);
+            drawChannel(leftChannelData, rightChannelData ? canvasHeight * 0.25 : canvasHeight * 0.5);
             if (rightChannelData) {
-                drawChannel(rightChannelData, CANVAS_HEIGHT * 0.75);
+                drawChannel(rightChannelData, canvasHeight * 0.75);
             }
         };
         _this.drawLocators = function (context, width) {
             var _a = _this.getRelativeLocators(), startPercent = _a.startPercent, endPercent = _a.endPercent;
+            var canvasHeight = _this.state.canvasHeight;
             if (startPercent > 0) {
                 context.fillStyle = colors_1.Color.CURSOR_COLOR;
                 var leftLocatorX = width * startPercent;
-                context.fillRect(leftLocatorX, 0, 1, CANVAS_HEIGHT);
+                context.fillRect(leftLocatorX, 0, 1, canvasHeight);
                 if (endPercent < 1) {
                     var rightLocatorX = width * endPercent;
-                    context.fillRect(rightLocatorX, 0, 1, CANVAS_HEIGHT);
+                    context.fillRect(rightLocatorX, 0, 1, canvasHeight);
                     context.fillStyle = colors_1.Color.SELECTION_COLOR;
                     var startX = leftLocatorX + 1;
                     var endX = rightLocatorX;
-                    context.fillRect(startX, 0, endX - startX, CANVAS_HEIGHT);
+                    context.fillRect(startX, 0, endX - startX, canvasHeight);
                 }
             }
         };
@@ -33423,14 +33426,14 @@ var LooprInterface = /** @class */ (function (_super) {
             if (_this.loopr.currentPlaybackTime === null) {
                 return;
             }
-            var _a = _this.state, lastPlaybackLocators = _a.lastPlaybackLocators, _b = _a.zoomLocators, zoomStartPercent = _b.startPercent, zoomEndPercent = _b.endPercent;
+            var _a = _this.state, lastPlaybackLocators = _a.lastPlaybackLocators, canvasHeight = _a.canvasHeight, _b = _a.zoomLocators, zoomStartPercent = _b.startPercent, zoomEndPercent = _b.endPercent;
             var _c = _this.getTrueLocators(lastPlaybackLocators), trueLocatorStartPercent = _c.startPercent, trueLocatorEndPercent = _c.endPercent;
             var relativeLocatorStartPercent = _this.getRelativeLocators(lastPlaybackLocators).startPercent;
             var zoomFactor = 1 / (zoomEndPercent - zoomStartPercent);
             var progressPercent = _this.loopr.currentPlaybackTime / _this.loopr.duration;
             var progressWidth = (width * progressPercent) % ((width * trueLocatorEndPercent) - (width * trueLocatorStartPercent));
             context.fillStyle = colors_1.Color.SELECTION_COLOR;
-            context.fillRect((width * relativeLocatorStartPercent), 0, progressWidth * zoomFactor, CANVAS_HEIGHT);
+            context.fillRect((width * relativeLocatorStartPercent), 0, progressWidth * zoomFactor, canvasHeight);
         };
         _this.getRelativeLocators = function (_a) {
             var _b = _a === void 0 ? _this.state.playbackLocators : _a, locator1Percent = _b.startPercent, locator2Percent = _b.endPercent;
@@ -33472,7 +33475,10 @@ var LooprInterface = /** @class */ (function (_super) {
             }
         };
         _this.loopr = props.loopr;
-        _this.state = { playbackLocators: { startPercent: 0, endPercent: 1 } };
+        _this.state = {
+            playbackLocators: { startPercent: 0, endPercent: 1 },
+            canvasHeight: GET_CANVAS_HEIGHT(props.height),
+        };
         return _this;
     }
     LooprInterface.prototype.componentWillMount = function () {
@@ -33492,8 +33498,12 @@ var LooprInterface = /** @class */ (function (_super) {
         window.removeEventListener('keydown', this.onKeyDown);
     };
     LooprInterface.prototype.componentWillReceiveProps = function (nextProps) {
-        if (nextProps.audioBuffer !== this.props.audioBuffer) {
+        var _a = this.props, audioBuffer = _a.audioBuffer, height = _a.height;
+        if (nextProps.audioBuffer !== audioBuffer) {
             this.setChannelData(nextProps.audioBuffer);
+        }
+        if (height !== nextProps.height) {
+            this.setState({ canvasHeight: GET_CANVAS_HEIGHT(nextProps.height) });
         }
     };
     LooprInterface.prototype.componentDidUpdate = function () {
@@ -33502,6 +33512,7 @@ var LooprInterface = /** @class */ (function (_super) {
     LooprInterface.prototype.render = function () {
         var _this = this;
         var _a = this.props, width = _a.width, height = _a.height;
+        var canvasHeight = this.state.canvasHeight;
         return (React.createElement("div", { style: {
                 width: width,
                 height: height,
@@ -33510,9 +33521,12 @@ var LooprInterface = /** @class */ (function (_super) {
                     color: colors_1.Color.MID_BLUE,
                     fontWeight: constants_1.Constant.FontWeight.REGULAR,
                     fontSize: 30,
-                    padding: constants_1.Constant.PADDING,
+                    height: HEADER_HEIGHT,
+                    display: 'flex',
+                    alignItems: 'center',
+                    paddingLeft: constants_1.Constant.PADDING,
                 } }, "Loopr"),
-            React.createElement("canvas", { ref: function (canvas) { return _this.canvas = canvas; }, width: width, height: CANVAS_HEIGHT, style: {
+            React.createElement("canvas", { ref: function (canvas) { return _this.canvas = canvas; }, width: width, height: canvasHeight, style: {
                     backgroundColor: colors_1.Color.MID_BLUE,
                     cursor: 'text',
                 }, onMouseDown: this.onMouseDown })));
@@ -33521,7 +33535,8 @@ var LooprInterface = /** @class */ (function (_super) {
     LooprInterface.prototype.draw = function () {
         var context = this.canvas.getContext('2d');
         var width = this.props.width;
-        context.clearRect(0, 0, width, CANVAS_HEIGHT);
+        var canvasHeight = this.state.canvasHeight;
+        context.clearRect(0, 0, width, canvasHeight);
         this.drawWaveform(context, width);
         this.drawLocators(context, width);
         this.drawPlaybackProgress(context, width);
