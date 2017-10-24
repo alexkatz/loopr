@@ -7,6 +7,7 @@ const PLAYBACK_BAR_WIDTH = 5;
 const HEADER_HEIGHT = 70;
 const CANVAS_HEIGHT_PERCENT = 0.7;
 const MIN_LOOP_PERCENT = 0.001;
+const DEFAULT_LOCATORS: Locators = { startPercent: 0, endPercent: 1 };
 const GET_CANVAS_HEIGHT = height => (height - HEADER_HEIGHT) * CANVAS_HEIGHT_PERCENT;
 
 export interface Locators {
@@ -42,7 +43,7 @@ class LooprInterface extends React.Component<LooprInterfaceProps, Partial<LooprI
         super(props);
         this.loopr = props.loopr;
         this.state = {
-            playbackLocators: { startPercent: 0, endPercent: 1 },
+            playbackLocators: DEFAULT_LOCATORS,
             canvasHeight: GET_CANVAS_HEIGHT(props.height),
         };
     }
@@ -175,10 +176,10 @@ class LooprInterface extends React.Component<LooprInterfaceProps, Partial<LooprI
                 case Constant.Key.SHIFT:
                     break;
                 case Constant.Key.Z:
-                    return this.setChannelData(this.props.audioBuffer, e.shiftKey ? { startPercent: 0, endPercent: 1 } : this.getTrueLocators(this.getRelativeLocators()));
+                    return e.shiftKey ? this.zoomOut() : this.zoomIn(this.getTrueLocators(this.getRelativeLocators()));
                 case Constant.Key.SPACE:
-                    return this.startPlayback();
-                default:
+                    return e.shiftKey ? this.stopPlayback() : this.startPlayback();
+                case Constant.Key.ESCAPE:
                     return this.stopPlayback();
             }
         }
@@ -206,23 +207,31 @@ class LooprInterface extends React.Component<LooprInterfaceProps, Partial<LooprI
         window.removeEventListener('mousemove', this.onMouseMove);
     }
 
-    private setChannelData = (audioBuffer: AudioBuffer, { startPercent = 0, endPercent = 1 }: Locators = {} as Locators) => {
+    private zoomIn = (zoomLocators: Locators) => {
+        this.setChannelData(this.props.audioBuffer, zoomLocators);
+    }
+
+    private zoomOut = () => {
+        if (this.state.zoomLocators === DEFAULT_LOCATORS) { return; }
+        const playbackLocators = this.getTrueLocators(this.state.playbackLocators);
+        this.setChannelData(this.props.audioBuffer, DEFAULT_LOCATORS, playbackLocators, playbackLocators);
+    }
+
+    private setChannelData = (audioBuffer: AudioBuffer, zoomLocators: Locators = DEFAULT_LOCATORS, playbackLocators: Locators = DEFAULT_LOCATORS, lastPlaybackLocators: Locators = DEFAULT_LOCATORS) => {
         const getSubArray = (channelData: Float32Array): Float32Array => channelData.slice(
-            Math.round(channelData.length * startPercent),
-            Math.round(channelData.length * endPercent),
+            Math.round(channelData.length * zoomLocators.startPercent),
+            Math.round(channelData.length * zoomLocators.endPercent),
         );
         const leftChannelData = getSubArray(audioBuffer.getChannelData(0));
         const rightChannelData = audioBuffer.numberOfChannels > 1 ? getSubArray(audioBuffer.getChannelData(1)) : null;
         const { lowPeak, highPeak } = this.getPeaks(leftChannelData, rightChannelData || undefined);
-        let { lastPlaybackLocators } = this.state;
-        if (this.isPlaying) { lastPlaybackLocators = { startPercent: 0, endPercent: 1 }; }
         this.setState({
             leftChannelData,
             rightChannelData,
             lowPeak,
             highPeak,
-            zoomLocators: { startPercent, endPercent },
-            playbackLocators: { startPercent: 0, endPercent: 1 },
+            zoomLocators,
+            playbackLocators,
             lastPlaybackLocators,
         });
     }

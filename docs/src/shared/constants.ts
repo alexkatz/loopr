@@ -8,5 +8,6 @@ export const Constant = {
         SPACE: 32,
         SHIFT: 16,
         Z: 90,
+        ESCAPE: 27,
     },
 };
