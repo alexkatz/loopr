@@ -8989,6 +8989,7 @@ exports.Constant = {
         SPACE: 32,
         SHIFT: 16,
         Z: 90,
+        ESCAPE: 27,
     },
 };
 
@@ -33269,6 +33270,7 @@ var PLAYBACK_BAR_WIDTH = 5;
 var HEADER_HEIGHT = 70;
 var CANVAS_HEIGHT_PERCENT = 0.7;
 var MIN_LOOP_PERCENT = 0.001;
+var DEFAULT_LOCATORS = { startPercent: 0, endPercent: 1 };
 var GET_CANVAS_HEIGHT = function (height) { return (height - HEADER_HEIGHT) * CANVAS_HEIGHT_PERCENT; };
 var LooprInterface = /** @class */ (function (_super) {
     __extends(LooprInterface, _super);
@@ -33332,10 +33334,10 @@ var LooprInterface = /** @class */ (function (_super) {
                     case constants_1.Constant.Key.SHIFT:
                         break;
                     case constants_1.Constant.Key.Z:
-                        return _this.setChannelData(_this.props.audioBuffer, e.shiftKey ? { startPercent: 0, endPercent: 1 } : _this.getTrueLocators(_this.getRelativeLocators()));
+                        return e.shiftKey ? _this.zoomOut() : _this.zoomIn(_this.getTrueLocators(_this.getRelativeLocators()));
                     case constants_1.Constant.Key.SPACE:
-                        return _this.startPlayback();
-                    default:
+                        return e.shiftKey ? _this.stopPlayback() : _this.startPlayback();
+                    case constants_1.Constant.Key.ESCAPE:
                         return _this.stopPlayback();
                 }
             }
@@ -33348,23 +33350,31 @@ var LooprInterface = /** @class */ (function (_super) {
             window.removeEventListener('mouseup', _this.onMouseUp);
             window.removeEventListener('mousemove', _this.onMouseMove);
         };
-        _this.setChannelData = function (audioBuffer, _a) {
-            var _b = _a === void 0 ? {} : _a, _c = _b.startPercent, startPercent = _c === void 0 ? 0 : _c, _d = _b.endPercent, endPercent = _d === void 0 ? 1 : _d;
-            var getSubArray = function (channelData) { return channelData.slice(Math.round(channelData.length * startPercent), Math.round(channelData.length * endPercent)); };
+        _this.zoomIn = function (zoomLocators) {
+            _this.setChannelData(_this.props.audioBuffer, zoomLocators);
+        };
+        _this.zoomOut = function () {
+            if (_this.state.zoomLocators === DEFAULT_LOCATORS) {
+                return;
+            }
+            var playbackLocators = _this.getTrueLocators(_this.state.playbackLocators);
+            _this.setChannelData(_this.props.audioBuffer, DEFAULT_LOCATORS, playbackLocators, playbackLocators);
+        };
+        _this.setChannelData = function (audioBuffer, zoomLocators, playbackLocators, lastPlaybackLocators) {
+            if (zoomLocators === void 0) { zoomLocators = DEFAULT_LOCATORS; }
+            if (playbackLocators === void 0) { playbackLocators = DEFAULT_LOCATORS; }
+            if (lastPlaybackLocators === void 0) { lastPlaybackLocators = DEFAULT_LOCATORS; }
+            var getSubArray = function (channelData) { return channelData.slice(Math.round(channelData.length * zoomLocators.startPercent), Math.round(channelData.length * zoomLocators.endPercent)); };
             var leftChannelData = getSubArray(audioBuffer.getChannelData(0));
             var rightChannelData = audioBuffer.numberOfChannels > 1 ? getSubArray(audioBuffer.getChannelData(1)) : null;
-            var _e = _this.getPeaks(leftChannelData, rightChannelData || undefined), lowPeak = _e.lowPeak, highPeak = _e.highPeak;
-            var lastPlaybackLocators = _this.state.lastPlaybackLocators;
-            if (_this.isPlaying) {
-                lastPlaybackLocators = { startPercent: 0, endPercent: 1 };
-            }
+            var _a = _this.getPeaks(leftChannelData, rightChannelData || undefined), lowPeak = _a.lowPeak, highPeak = _a.highPeak;
             _this.setState({
                 leftChannelData: leftChannelData,
                 rightChannelData: rightChannelData,
                 lowPeak: lowPeak,
                 highPeak: highPeak,
-                zoomLocators: { startPercent: startPercent, endPercent: endPercent },
-                playbackLocators: { startPercent: 0, endPercent: 1 },
+                zoomLocators: zoomLocators,
+                playbackLocators: playbackLocators,
                 lastPlaybackLocators: lastPlaybackLocators,
             });
         };
@@ -33476,7 +33486,7 @@ var LooprInterface = /** @class */ (function (_super) {
         };
         _this.loopr = props.loopr;
         _this.state = {
-            playbackLocators: { startPercent: 0, endPercent: 1 },
+            playbackLocators: DEFAULT_LOCATORS,
             canvasHeight: GET_CANVAS_HEIGHT(props.height),
         };
         return _this;
