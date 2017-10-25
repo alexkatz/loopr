@@ -181,6 +181,8 @@ class LooprInterface extends React.Component<LooprInterfaceProps, Partial<LooprI
                     return e.shiftKey ? this.stopPlayback() : this.startPlayback();
                 case Constant.Key.ESCAPE:
                     return this.stopPlayback();
+                case Constant.Key.S:
+                    return this.slowDown();
             }
         }
     }
@@ -234,6 +236,10 @@ class LooprInterface extends React.Component<LooprInterfaceProps, Partial<LooprI
             playbackLocators,
             lastPlaybackLocators,
         });
+    }
+
+    private slowDown = () => {
+        // const leftChannelData = this.state.leftChannelData.red
     }
 
     private getPeaks = (...channels: Float32Array[]): { highPeak: number, lowPeak: number } => {
