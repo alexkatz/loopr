@@ -239,7 +239,7 @@ class LooprInterface extends React.Component<LooprInterfaceProps, Partial<LooprI
     private getPeaks = (...channels: Float32Array[]): { highPeak: number, lowPeak: number } => {
         let lowPeak = 0;
         let highPeak = 0;
-        channels.forEach(channelData => channelData.forEach(amplitude => {
+        channels.filter(c => c).forEach(channelData => channelData.forEach(amplitude => {
             if (amplitude < lowPeak) { lowPeak = amplitude; }
             if (amplitude > highPeak) { highPeak = amplitude; }
         }));
