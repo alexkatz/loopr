@@ -11,6 +11,7 @@ export class Loopr {
 
     public startedAt: number = null;
     private source: AudioBufferSourceNode = null;
+    private scriptNode: ScriptProcessorNode = null;
 
     constructor() {
         const ValidAudioContext = (window as any).AudioContext || (window as any).webkitAudioContext;
@@ -18,6 +19,8 @@ export class Loopr {
             this.audioContext = new ValidAudioContext();
         }
     }
+
+    // PROPERTIES
 
     private get buffer() {
         return this.internalBuffer;
@@ -27,6 +30,8 @@ export class Loopr {
         this.internalBuffer = buffer;
         this.audioBufferChangedListeners.forEach(listener => listener(buffer));
     }
+
+    // PUBLIC METHODS
 
     public get currentPlaybackTime(): number {
         if (this.startedAt) {
@@ -44,6 +49,11 @@ export class Loopr {
         const fileReader = new FileReader();
         fileReader.onloadend = async () => {
             this.buffer = await this.audioContext.decodeAudioData(fileReader.result);
+            if (this.startedAt !== null) {
+                this.stop();
+            }
+            this.scriptNode = this.audioContext.createScriptProcessor(4096, this.buffer.numberOfChannels, this.buffer.numberOfChannels);
+            this.scriptNode.onaudioprocess = this.onAudioProcess;
         };
         fileReader.readAsArrayBuffer(file);
     }
@@ -60,7 +70,8 @@ export class Loopr {
         if (this.source) { this.source.stop(); }
         this.source = this.audioContext.createBufferSource();
         this.source.buffer = this.internalBuffer;
-        this.source.connect(this.audioContext.destination);
+        this.source.connect(this.scriptNode);
+        this.scriptNode.connect(this.audioContext.destination);
         const startSeconds = this.internalBuffer.duration * startPercent;
         const endSeconds = this.internalBuffer.duration * endPercent;
         this.source.loopStart = startSeconds;
@@ -71,7 +82,12 @@ export class Loopr {
     }
 
     public stop = () => {
-        if (this.source) { this.source.stop(); }
+        if (this.source) {
+            this.source.stop();
+            this.source.disconnect(this.scriptNode);
+            this.scriptNode.removeEventListener('onaudioprocess', this.onAudioProcess);
+            this.scriptNode.disconnect(this.audioContext.destination);
+        }
         this.startedAt = null;
         this.source = null;
     }
@@ -82,6 +98,18 @@ export class Loopr {
             const endSeconds = this.internalBuffer.duration * endPercent;
             this.source.loopStart = startSeconds;
             this.source.loopEnd = endSeconds;
+        }
+    }
+
+    // PRIVATE METHODS 
+
+    private onAudioProcess = ({ inputBuffer, outputBuffer }: AudioProcessingEvent) => {
+        for (let channel = 0; channel < outputBuffer.numberOfChannels; channel += 1) {
+            const inputData = inputBuffer.getChannelData(channel);
+            const outputData = outputBuffer.getChannelData(channel);
+            for (let sample = 0; sample < inputBuffer.length; sample += 1) {
+                outputData[sample] = inputData[sample];
+            }
         }
     }
 }
