@@ -33385,7 +33385,7 @@ var LooprInterface = /** @class */ (function (_super) {
             }
             var lowPeak = 0;
             var highPeak = 0;
-            channels.forEach(function (channelData) { return channelData.forEach(function (amplitude) {
+            channels.filter(function (c) { return c; }).forEach(function (channelData) { return channelData.forEach(function (amplitude) {
                 if (amplitude < lowPeak) {
                     lowPeak = amplitude;
                 }
