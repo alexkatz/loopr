@@ -9,7 +9,8 @@
       "semicolon": [true],
       "no-unused-variable": true,
       "object-literal-sort-keys": false,
-      "space-before-function-paren": ["error", {
+      "no-bitwise": false,
+      "space-before-function-paren": [true, {
         "anonymous": "always",
         "named": "never",
         "asyncArrow": "always"
