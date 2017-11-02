@@ -25,6 +25,8 @@
     "start": "webpack-dev-server --inline --hot"
   },
   "dependencies": {
+    "CBuffer": "^2.0.0",
+    "dsp.js": "^1.0.1",
     "radium": "^0.19.5",
     "react": "^16.0.0",
     "react-dom": "^16.0.0",

@@ -9,5 +9,6 @@ export const Constant = {
         SHIFT: 16,
         Z: 90,
         ESCAPE: 27,
+        S: 83,
     },
 };

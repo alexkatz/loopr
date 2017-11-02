@@ -41,6 +41,10 @@
   version "16.0.10"
   resolved "https://registry.yarnpkg.com/@types/react/-/react-16.0.10.tgz#a24b630f5f1f170866a148a147d4fc8636ea88e0"
 
+CBuffer@^2.0.0:
+  version "2.0.0"
+  resolved "https://registry.yarnpkg.com/CBuffer/-/CBuffer-2.0.0.tgz#f956cf65888a8988c69fbe2c94f97003c9b71e1a"
+
 abbrev@1:
   version "1.1.1"
   resolved "https://registry.yarnpkg.com/abbrev/-/abbrev-1.1.1.tgz#f8f2c887ad10bf67f634f005b6987fed3179aac8"
@@ -980,6 +984,10 @@ domutils@1.5.1:
   dependencies:
     dom-serializer "0"
     domelementtype "1"
+
+dsp.js@^1.0.1:
+  version "1.0.1"
+  resolved "https://registry.yarnpkg.com/dsp.js/-/dsp.js-1.0.1.tgz#02554a223ee514cd0e226cb6fb88d6d0b3e91308"
 
 ecc-jsbn@~0.1.1:
   version "0.1.1"
