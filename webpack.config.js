@@ -1,14 +1,13 @@
 const path = require('path');
-const CopyWebpackPlugin = require('copy-webpack-plugin');
-
+const HtmlWebpackPlugin = require('html-webpack-plugin');
+const HtmlStringReplace = require('html-string-replace-webpack-plugin');
 const config = {
     entry: {
-        app: ['./src/Popover.tsx'],
+        app: ['./src/index.tsx'],
     },
     output: {
         filename: 'index.js',
         path: path.resolve(__dirname + '/dist'),
-        libraryTarget: 'umd',
     },
     devtool: 'source-map',
     resolve: {
@@ -17,20 +16,26 @@ const config = {
     devServer: {
         contentBase: path.resolve(__dirname + '/dist'),
     },
+    plugins: [
+        new HtmlWebpackPlugin({
+            template: 'index.html',
+            inject: false,
+        }),
+        new HtmlStringReplace({
+            enable: true,
+            patterns: [
+                {
+                    match: /src=".\/dist\/index.js"/g,
+                    replacement: () => 'src="index.js"',
+                },
+            ]
+        })
+    ],
     module: {
         rules: [
             { test: /\.tsx?$/, loader: 'awesome-typescript-loader' },
             { enforce: 'pre', test: /\.js$/, loader: 'source-map-loader' }
         ],
-    },
-    plugins: [
-        new CopyWebpackPlugin([
-            { from: './src/index.d.ts', to: './' },
-        ]),
-    ],
-    externals: {
-        'react': 'commonjs react',
-        'react-dom': 'commonjs react-dom',
     },
 };
 
