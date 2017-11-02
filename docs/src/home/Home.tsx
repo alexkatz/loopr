@@ -4,8 +4,8 @@ import { DropzoneProps, DropFilesEventHandler } from 'react-dropzone';
 import { Color } from '../shared/colors';
 import { Constant } from '../shared/constants';
 import { Style } from '../shared/styles';
-import { Loopr, RemoveListener } from '../loopr/loopr';
-import { LooprInterface } from '../loopr/LooprInterface';
+import { Player, RemoveListener } from '../interface/player';
+import { Interface } from '../interface/Interface';
 import { Welcome } from './Welcome';
 const Dropzone = require('react-dropzone').default as React.ComponentType<DropzoneProps>;
 
@@ -14,7 +14,7 @@ interface HomeState {
 }
 
 class Home extends React.Component<any, HomeState> {
-    private loopr = new Loopr();
+    private player = new Player();
     private removeListeners: RemoveListener[] = [];
 
     constructor(props: any) {
@@ -24,7 +24,7 @@ class Home extends React.Component<any, HomeState> {
 
     public componentWillMount() {
         this.removeListeners.push(
-            this.loopr.onAudioBufferChanged(audioBuffer => this.setState({ audioBuffer })),
+            this.player.onAudioBufferChanged(audioBuffer => this.setState({ audioBuffer })),
         );
     }
 
@@ -45,7 +45,7 @@ class Home extends React.Component<any, HomeState> {
                         }}
                     >
                         <Dropzone
-                            onDrop={([file]) => this.loopr.setAudioFile(file)}
+                            onDrop={([file]) => this.player.setAudioFile(file)}
                             accept={'audio/x-m4a, audio/mp3, audio/x-wav'}
                             disableClick={audioBuffer != null}
                             style={{
@@ -55,11 +55,11 @@ class Home extends React.Component<any, HomeState> {
                         >
                             {!audioBuffer && (<Welcome width={width} />)}
                             {audioBuffer && (
-                                <LooprInterface
+                                <Interface
                                     width={width}
                                     height={height}
                                     audioBuffer={audioBuffer}
-                                    loopr={this.loopr}
+                                    player={this.player}
                                 />
                             )}
                         </Dropzone>

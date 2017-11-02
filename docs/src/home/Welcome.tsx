@@ -26,7 +26,7 @@ const Welcome: React.StatelessComponent<{ width: number }> = ({ width }) => (
                 cursor: 'default',
             }}
         >
-            TimeStretch
+            TimeStretcher
         </div>
         <div
             style={{
