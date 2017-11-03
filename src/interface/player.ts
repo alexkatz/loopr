@@ -1,5 +1,5 @@
 import { Locators } from './Track';
-import BufferedPV from './Echo66PhaseVocoder';
+import BufferedPV from '../phaseVocoder/Echo66PhaseVocoder';
 
 const FRAME_SIZE = 2048;
 const BUFFER_SIZE = 4096;
@@ -39,7 +39,9 @@ export class Player {
     }
 
     public set alpha(value: number) {
-        this.phaseVocoder.alpha = value;
+        if (this.phaseVocoder) {
+            this.phaseVocoder.alpha = value;
+        }
     }
 
     public get alpha(): number {

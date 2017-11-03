@@ -1,4 +1,4 @@
-import { FFT } from '../fft/fft'
+import { FFT } from './fft'
 import CBuffer from 'CBuffer'
 
 // forked from: https://github.com/echo66/echo66.github.io/tree/master/demos/PhaseVocoder.js
@@ -413,9 +413,13 @@ function PhaseVocoder(winSize, sampleRate) {
       _overlapFactor = 2;
     else if (newAlpha <= 1)
       _overlapFactor = 4;
-    else
+    else if (newAlpha < 2)
       _overlapFactor = 5;
-
+    else if (newAlpha < 4)
+      _overlapFactor = 20;
+    else
+      _overlapFactor = 40;
+      
     /* "Fixed" synthesis hop size. */
     _Ha = round(_winSize / _overlapFactor);
     _Hs = round(newAlpha * _Ha);
