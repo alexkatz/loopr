@@ -1,4 +1,3 @@
-
 import * as React from 'react';
 import { Color } from '../shared/colors';
 import { Constant } from '../shared/constants';
@@ -8,6 +7,7 @@ const PLAYBACK_BAR_WIDTH = 5;
 const HEADER_HEIGHT = 70;
 const CANVAS_HEIGHT_PERCENT = 0.7;
 const MIN_LOOP_PERCENT = 0.001;
+const PLAYBACK_DRAW_MILLISECONDS = 30;
 const DEFAULT_LOCATORS: Locators = { startPercent: 0, endPercent: 1 };
 const GET_CANVAS_HEIGHT = height => (height - HEADER_HEIGHT) * CANVAS_HEIGHT_PERCENT;
 
@@ -16,9 +16,17 @@ export interface Locators {
   endPercent?: number;
 }
 
+interface WaveformRect {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  sampleIndex: number;
+}
+
 interface PlaybackRenderInfo {
-  start: number;
-  end: number;
+  startPixel: number;
+  endPixel: number;
   zoomFactor: number;
 }
 
@@ -45,15 +53,17 @@ interface TrackState {
   zoomLocators: Locators;
   playbackLocators: Locators;
   shiftLocator: Locator;
+  waveformRects: WaveformRect[];
 }
 
 class Track extends React.Component<TrackProps, Partial<TrackState>> {
   private canvas: HTMLCanvasElement = null;
   private isPlaying: boolean = false;
+  private playbackDrawInterval: number = null;
 
   constructor(props: TrackProps) {
     super(props);
-    this.state = { playbackLocators: DEFAULT_LOCATORS };
+    this.state = { playbackLocators: DEFAULT_LOCATORS, waveformRects: [] };
   }
 
   public componentWillMount() {
@@ -67,7 +77,7 @@ class Track extends React.Component<TrackProps, Partial<TrackState>> {
   public componentDidMount() {
     this.subscribeToWindowMouseEvents();
     window.addEventListener('keydown', this.onKeyDown);
-    this.draw();
+    this.setState({ waveformRects: this.getWaveformRects() }, this.draw);
   }
 
   public componentWillUnmount() {
@@ -86,8 +96,12 @@ class Track extends React.Component<TrackProps, Partial<TrackState>> {
     }
   }
 
-  public componentDidUpdate() {
-    this.draw();
+  public componentDidUpdate(prevProps: TrackProps, prevState: TrackState) {
+    if (this.state.zoomLocators !== prevState.zoomLocators) {
+      this.setState({ waveformRects: this.getWaveformRects() });
+    } else {
+      this.draw();
+    }
   }
 
   public render() {
@@ -202,15 +216,13 @@ class Track extends React.Component<TrackProps, Partial<TrackState>> {
           return e.shiftKey ? this.stopPlayback() : this.startPlayback();
         case Constant.Key.ESCAPE:
           return this.stopPlayback();
-        // case Constant.Key.S:
-        // return this.slowDown();
       }
     }
   }
 
   // PRIVATE METHODS
 
-  private draw() {
+  private draw = () => {
     const context = this.canvas.getContext('2d');
     const { width, height } = this.props;
     context.clearRect(0, 0, width, height);
@@ -261,11 +273,6 @@ class Track extends React.Component<TrackProps, Partial<TrackState>> {
     });
   }
 
-  private slowDown = () => {
-    const { player } = this.props;
-    player.alpha = player.alpha === 2 ? 1 : 2;
-  }
-
   private getPeaks = (...channels: Float32Array[]): { highPeak: number, lowPeak: number } => {
     let lowPeak = 0;
     let highPeak = 0;
@@ -279,35 +286,54 @@ class Track extends React.Component<TrackProps, Partial<TrackState>> {
   private log10 = x => Math.log(x) * Math.LOG10E;
   private roundHalf = x => Math.round(x * 2) / 2;
 
-  private drawWaveform = (context: CanvasRenderingContext2D, playbackRenderInfo?: PlaybackRenderInfo) => { // TODO: color waveform differently when within loop boundaries or playback progress boundaries...
+  private drawWaveform = (context: CanvasRenderingContext2D, playbackRenderInfo: PlaybackRenderInfo) => { // TODO: color waveform differently when within loop boundaries or playback progress boundaries...
+    const { waveformRects } = this.state;
+    let startPixel: number;
+    let playbackProgressEndPixel: number;
+    if (playbackRenderInfo !== null) {
+      ({ startPixel } = playbackRenderInfo);
+      const { endPixel, zoomFactor } = playbackRenderInfo;
+      const playbackProgressWidth = (endPixel - startPixel) * zoomFactor;
+      playbackProgressEndPixel = startPixel + playbackProgressWidth;
+    }
+
+    waveformRects.forEach(waveformRect => {
+      const { x, y, width, height } = waveformRect;
+      context.fillStyle = Color.DARK_BLUE;
+      if (playbackRenderInfo && x >= startPixel && x <= playbackProgressEndPixel) {
+        context.fillStyle = Color.WHITE;
+      }
+      context.fillRect(x, y, width, height);
+    });
+  }
+
+  private getWaveformRects = (): WaveformRect[] => {
     const { leftChannelData, rightChannelData, lowPeak, highPeak } = this.state;
     const { width, height } = this.props;
     const pixelCount = width * 2;
     const peak = Math.max(Math.abs(lowPeak), highPeak);
     const NORMALIZE_FACTOR = (rightChannelData ? height * 0.25 : height * 0.5) / peak;
     const DECIMATION_FACTOR = leftChannelData.length / pixelCount;
-    let start: number = null;
-    let playbackProgressEnd: number = null;
-    if (playbackRenderInfo !== null) {
-      start = playbackRenderInfo.start;
-      const { end, zoomFactor } = playbackRenderInfo;
-      const playbackProgressWidth = (end - start) * zoomFactor;
-      playbackProgressEnd = start + playbackProgressWidth;
-    }
+    const waveformRects: WaveformRect[] = [];
 
-    const drawChannel = (channelData, midY) => {
+    const drawChannel = (channelData: Float32Array, midY: number) => {
       for (let i = 0; i <= width; i += 0.5) {
-        context.fillStyle = Color.DARK_BLUE;
-        if (playbackRenderInfo !== null && i >= start && i <= playbackProgressEnd) {
-          context.fillStyle = Color.WHITE;
-        }
-        const amplitude = Math.abs(channelData[Math.round((i * 2) * DECIMATION_FACTOR)] * NORMALIZE_FACTOR);
-        context.fillRect(i, midY - amplitude, 0.5, amplitude * 2);
+        const sampleIndex = Math.round((i * 2) * DECIMATION_FACTOR);
+        const amplitude = Math.abs(channelData[sampleIndex] * NORMALIZE_FACTOR);
+        waveformRects.push({
+          x: i,
+          y: midY - amplitude,
+          width: 0.5,
+          height: amplitude * 2,
+          sampleIndex,
+        });
       }
     };
 
     drawChannel(leftChannelData, rightChannelData ? height * 0.25 : height * 0.5);
     if (rightChannelData) { drawChannel(rightChannelData, height * 0.75); }
+
+    return waveformRects;
   }
 
   private drawLocators = (context: CanvasRenderingContext2D) => {
@@ -328,23 +354,23 @@ class Track extends React.Component<TrackProps, Partial<TrackState>> {
     }
   }
 
-  private drawPlaybackProgress = (context: CanvasRenderingContext2D, { start, end, zoomFactor }: PlaybackRenderInfo) => {
+  private drawPlaybackProgress = (context: CanvasRenderingContext2D, { startPixel, endPixel, zoomFactor }: PlaybackRenderInfo) => {
     context.fillStyle = Color.SELECTION_COLOR;
-    context.fillRect(start, 0, (end - start) * zoomFactor, this.props.height);
+    context.fillRect(startPixel, 0, (endPixel - startPixel) * zoomFactor, this.props.height);
   }
 
   private getPlaybackRenderInfo = (): PlaybackRenderInfo => {
     const { player, width } = this.props;
-    if (player.currentPlaybackTime === null) { return null; }
+    if (!this.isPlaying || player.currentPlaybackTime === null) { return null; }
     const { lastPlaybackLocators, zoomLocators: { startPercent: zoomStartPercent, endPercent: zoomEndPercent } } = this.state;
     const { startPercent: trueLocatorStartPercent, endPercent: trueLocatorEndPercent } = this.getTrueLocators(lastPlaybackLocators);
     const { startPercent: relativeLocatorStartPercent } = this.getRelativeLocators(lastPlaybackLocators);
     const zoomFactor = 1 / (zoomEndPercent - zoomStartPercent);
-    const progressPercent = player.currentPlaybackTime / player.alphaDuration;
+    const progressPercent = (player.currentPlaybackTime / player.duration);
     const progressWidth = (width * progressPercent) % ((width * trueLocatorEndPercent) - (width * trueLocatorStartPercent));
-    const start = width * relativeLocatorStartPercent;
-    const end = start + progressWidth;
-    return { start, end, zoomFactor };
+    const startPixel = width * relativeLocatorStartPercent;
+    const endPixel = startPixel + progressWidth;
+    return { startPixel, endPixel, zoomFactor };
   }
 
   private getRelativeLocators = ({ startPercent: locator1Percent, endPercent: locator2Percent }: Locators = this.state.playbackLocators): Locators => {
@@ -370,7 +396,7 @@ class Track extends React.Component<TrackProps, Partial<TrackState>> {
         player.play(this.getTrueLocators(lastPlaybackLocators));
         if (!this.isPlaying) {
           this.isPlaying = true;
-          window.requestAnimationFrame(this.animatePlayback);
+          this.playbackDrawInterval = window.setInterval(this.draw, PLAYBACK_DRAW_MILLISECONDS);
         }
       }
     });
@@ -378,14 +404,9 @@ class Track extends React.Component<TrackProps, Partial<TrackState>> {
 
   private stopPlayback = () => {
     this.props.player.stop();
+    window.clearInterval(this.playbackDrawInterval);
     this.isPlaying = false;
-  }
-
-  private animatePlayback: FrameRequestCallback = () => {
     this.draw();
-    if (this.isPlaying) {
-      window.requestAnimationFrame(this.animatePlayback);
-    }
   }
 }
 

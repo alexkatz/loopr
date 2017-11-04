@@ -58,8 +58,12 @@ export class Player {
         return null;
     }
 
+    public get duration(): number {
+        return this.buffer.duration;
+    }
+
     public get alphaDuration(): number {
-        return this.buffer.duration * this.alpha;
+        return this.buffer.duration * this.alpha
     }
 
     public get alphaLoopStart(): number {
