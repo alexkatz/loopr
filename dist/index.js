@@ -33305,6 +33305,13 @@ var Player = /** @class */ (function () {
         enumerable: true,
         configurable: true
     });
+    Object.defineProperty(Player.prototype, "duration", {
+        get: function () {
+            return this.buffer.duration;
+        },
+        enumerable: true,
+        configurable: true
+    });
     Object.defineProperty(Player.prototype, "alphaDuration", {
         get: function () {
             return this.buffer.duration * this.alpha;
@@ -34394,6 +34401,7 @@ var PLAYBACK_BAR_WIDTH = 5;
 var HEADER_HEIGHT = 70;
 var CANVAS_HEIGHT_PERCENT = 0.7;
 var MIN_LOOP_PERCENT = 0.001;
+var PLAYBACK_DRAW_MILLISECONDS = 30;
 var DEFAULT_LOCATORS = { startPercent: 0, endPercent: 1 };
 var GET_CANVAS_HEIGHT = function (height) { return (height - HEADER_HEIGHT) * CANVAS_HEIGHT_PERCENT; };
 var Locator;
@@ -34407,6 +34415,7 @@ var Track = /** @class */ (function (_super) {
         var _this = _super.call(this, props) || this;
         _this.canvas = null;
         _this.isPlaying = false;
+        _this.playbackDrawInterval = null;
         // MOUSE EVENTS
         _this.onMouseDown = function (e) {
             var width = _this.props.width;
@@ -34506,6 +34515,18 @@ var Track = /** @class */ (function (_super) {
                 }
             }
         };
+        // PRIVATE METHODS
+        _this.draw = function () {
+            var context = _this.canvas.getContext('2d');
+            var _a = _this.props, width = _a.width, height = _a.height;
+            context.clearRect(0, 0, width, height);
+            var playbackRenderInfo = _this.getPlaybackRenderInfo();
+            _this.drawWaveform(context, playbackRenderInfo);
+            _this.drawLocators(context);
+            if (playbackRenderInfo !== null) {
+                _this.drawPlaybackProgress(context, playbackRenderInfo);
+            }
+        };
         _this.subscribeToWindowMouseEvents = function () {
             window.addEventListener('mousemove', _this.onMouseMove);
             window.addEventListener('mouseup', _this.onMouseUp);
@@ -34542,10 +34563,6 @@ var Track = /** @class */ (function (_super) {
                 lastPlaybackLocators: lastPlaybackLocators,
             });
         };
-        _this.slowDown = function () {
-            var player = _this.props.player;
-            player.alpha = player.alpha === 2 ? 1 : 2;
-        };
         _this.getPeaks = function () {
             var channels = [];
             for (var _i = 0; _i < arguments.length; _i++) {
@@ -34566,34 +34583,50 @@ var Track = /** @class */ (function (_super) {
         _this.log10 = function (x) { return Math.log(x) * Math.LOG10E; };
         _this.roundHalf = function (x) { return Math.round(x * 2) / 2; };
         _this.drawWaveform = function (context, playbackRenderInfo) {
+            var waveformRects = _this.state.waveformRects;
+            var startPixel;
+            var playbackProgressEndPixel;
+            if (playbackRenderInfo !== null) {
+                (startPixel = playbackRenderInfo.startPixel);
+                var endPixel = playbackRenderInfo.endPixel, zoomFactor = playbackRenderInfo.zoomFactor;
+                var playbackProgressWidth = (endPixel - startPixel) * zoomFactor;
+                playbackProgressEndPixel = startPixel + playbackProgressWidth;
+            }
+            waveformRects.forEach(function (waveformRect) {
+                var x = waveformRect.x, y = waveformRect.y, width = waveformRect.width, height = waveformRect.height;
+                context.fillStyle = colors_1.Color.DARK_BLUE;
+                if (playbackRenderInfo && x >= startPixel && x <= playbackProgressEndPixel) {
+                    context.fillStyle = colors_1.Color.WHITE;
+                }
+                context.fillRect(x, y, width, height);
+            });
+        };
+        _this.getWaveformRects = function () {
             var _a = _this.state, leftChannelData = _a.leftChannelData, rightChannelData = _a.rightChannelData, lowPeak = _a.lowPeak, highPeak = _a.highPeak;
             var _b = _this.props, width = _b.width, height = _b.height;
             var pixelCount = width * 2;
             var peak = Math.max(Math.abs(lowPeak), highPeak);
             var NORMALIZE_FACTOR = (rightChannelData ? height * 0.25 : height * 0.5) / peak;
             var DECIMATION_FACTOR = leftChannelData.length / pixelCount;
-            var start = null;
-            var playbackProgressEnd = null;
-            if (playbackRenderInfo !== null) {
-                start = playbackRenderInfo.start;
-                var end = playbackRenderInfo.end, zoomFactor = playbackRenderInfo.zoomFactor;
-                var playbackProgressWidth = (end - start) * zoomFactor;
-                playbackProgressEnd = start + playbackProgressWidth;
-            }
+            var waveformRects = [];
             var drawChannel = function (channelData, midY) {
                 for (var i = 0; i <= width; i += 0.5) {
-                    context.fillStyle = colors_1.Color.DARK_BLUE;
-                    if (playbackRenderInfo !== null && i >= start && i <= playbackProgressEnd) {
-                        context.fillStyle = colors_1.Color.WHITE;
-                    }
-                    var amplitude = Math.abs(channelData[Math.round((i * 2) * DECIMATION_FACTOR)] * NORMALIZE_FACTOR);
-                    context.fillRect(i, midY - amplitude, 0.5, amplitude * 2);
+                    var sampleIndex = Math.round((i * 2) * DECIMATION_FACTOR);
+                    var amplitude = Math.abs(channelData[sampleIndex] * NORMALIZE_FACTOR);
+                    waveformRects.push({
+                        x: i,
+                        y: midY - amplitude,
+                        width: 0.5,
+                        height: amplitude * 2,
+                        sampleIndex: sampleIndex,
+                    });
                 }
             };
             drawChannel(leftChannelData, rightChannelData ? height * 0.25 : height * 0.5);
             if (rightChannelData) {
                 drawChannel(rightChannelData, height * 0.75);
             }
+            return waveformRects;
         };
         _this.drawLocators = function (context) {
             var _a = _this.getRelativeLocators(), startPercent = _a.startPercent, endPercent = _a.endPercent;
@@ -34613,24 +34646,24 @@ var Track = /** @class */ (function (_super) {
             }
         };
         _this.drawPlaybackProgress = function (context, _a) {
-            var start = _a.start, end = _a.end, zoomFactor = _a.zoomFactor;
+            var startPixel = _a.startPixel, endPixel = _a.endPixel, zoomFactor = _a.zoomFactor;
             context.fillStyle = colors_1.Color.SELECTION_COLOR;
-            context.fillRect(start, 0, (end - start) * zoomFactor, _this.props.height);
+            context.fillRect(startPixel, 0, (endPixel - startPixel) * zoomFactor, _this.props.height);
         };
         _this.getPlaybackRenderInfo = function () {
             var _a = _this.props, player = _a.player, width = _a.width;
-            if (player.currentPlaybackTime === null) {
+            if (!_this.isPlaying || player.currentPlaybackTime === null) {
                 return null;
             }
             var _b = _this.state, lastPlaybackLocators = _b.lastPlaybackLocators, _c = _b.zoomLocators, zoomStartPercent = _c.startPercent, zoomEndPercent = _c.endPercent;
             var _d = _this.getTrueLocators(lastPlaybackLocators), trueLocatorStartPercent = _d.startPercent, trueLocatorEndPercent = _d.endPercent;
             var relativeLocatorStartPercent = _this.getRelativeLocators(lastPlaybackLocators).startPercent;
             var zoomFactor = 1 / (zoomEndPercent - zoomStartPercent);
-            var progressPercent = player.currentPlaybackTime / player.alphaDuration;
+            var progressPercent = (player.currentPlaybackTime / player.duration);
             var progressWidth = (width * progressPercent) % ((width * trueLocatorEndPercent) - (width * trueLocatorStartPercent));
-            var start = width * relativeLocatorStartPercent;
-            var end = start + progressWidth;
-            return { start: start, end: end, zoomFactor: zoomFactor };
+            var startPixel = width * relativeLocatorStartPercent;
+            var endPixel = startPixel + progressWidth;
+            return { startPixel: startPixel, endPixel: endPixel, zoomFactor: zoomFactor };
         };
         _this.getRelativeLocators = function (_a) {
             var _b = _a === void 0 ? _this.state.playbackLocators : _a, locator1Percent = _b.startPercent, locator2Percent = _b.endPercent;
@@ -34657,22 +34690,18 @@ var Track = /** @class */ (function (_super) {
                     player.play(_this.getTrueLocators(lastPlaybackLocators));
                     if (!_this.isPlaying) {
                         _this.isPlaying = true;
-                        window.requestAnimationFrame(_this.animatePlayback);
+                        _this.playbackDrawInterval = window.setInterval(_this.draw, PLAYBACK_DRAW_MILLISECONDS);
                     }
                 }
             });
         };
         _this.stopPlayback = function () {
             _this.props.player.stop();
+            window.clearInterval(_this.playbackDrawInterval);
             _this.isPlaying = false;
-        };
-        _this.animatePlayback = function () {
             _this.draw();
-            if (_this.isPlaying) {
-                window.requestAnimationFrame(_this.animatePlayback);
-            }
         };
-        _this.state = { playbackLocators: DEFAULT_LOCATORS };
+        _this.state = { playbackLocators: DEFAULT_LOCATORS, waveformRects: [] };
         return _this;
     }
     Track.prototype.componentWillMount = function () {
@@ -34685,7 +34714,7 @@ var Track = /** @class */ (function (_super) {
     Track.prototype.componentDidMount = function () {
         this.subscribeToWindowMouseEvents();
         window.addEventListener('keydown', this.onKeyDown);
-        this.draw();
+        this.setState({ waveformRects: this.getWaveformRects() }, this.draw);
     };
     Track.prototype.componentWillUnmount = function () {
         this.UnsubscribeFromWindowMouseEvents();
@@ -34700,8 +34729,13 @@ var Track = /** @class */ (function (_super) {
             player.alpha = nextProps.alpha;
         }
     };
-    Track.prototype.componentDidUpdate = function () {
-        this.draw();
+    Track.prototype.componentDidUpdate = function (prevProps, prevState) {
+        if (this.state.zoomLocators !== prevState.zoomLocators) {
+            this.setState({ waveformRects: this.getWaveformRects() });
+        }
+        else {
+            this.draw();
+        }
     };
     Track.prototype.render = function () {
         var _this = this;
@@ -34710,18 +34744,6 @@ var Track = /** @class */ (function (_super) {
                 backgroundColor: colors_1.Color.MID_BLUE,
                 cursor: 'text',
             }, onMouseDown: this.onMouseDown }));
-    };
-    // PRIVATE METHODS
-    Track.prototype.draw = function () {
-        var context = this.canvas.getContext('2d');
-        var _a = this.props, width = _a.width, height = _a.height;
-        context.clearRect(0, 0, width, height);
-        var playbackRenderInfo = this.getPlaybackRenderInfo();
-        this.drawWaveform(context, playbackRenderInfo);
-        this.drawLocators(context);
-        if (playbackRenderInfo !== null) {
-            this.drawPlaybackProgress(context, playbackRenderInfo);
-        }
     };
     return Track;
 }(React.Component));
