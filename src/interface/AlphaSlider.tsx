@@ -112,4 +112,4 @@ class AlphaSlider extends React.Component<AlphaSliderProps, AlphaSliderState> {
   }
 }
 
-export { AlphaSlider }
+export { AlphaSlider };

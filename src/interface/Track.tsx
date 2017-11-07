@@ -7,7 +7,6 @@ const PLAYBACK_BAR_WIDTH = 5;
 const HEADER_HEIGHT = 70;
 const CANVAS_HEIGHT_PERCENT = 0.7;
 const MIN_LOOP_PERCENT = 0.001;
-const PLAYBACK_DRAW_MILLISECONDS = 30;
 const DEFAULT_LOCATORS: Locators = { startPercent: 0, endPercent: 1 };
 const GET_CANVAS_HEIGHT = height => (height - HEADER_HEIGHT) * CANVAS_HEIGHT_PERCENT;
 
@@ -59,7 +58,9 @@ interface TrackState {
 class Track extends React.Component<TrackProps, Partial<TrackState>> {
   private canvas: HTMLCanvasElement = null;
   private isPlaying: boolean = false;
-  private playbackDrawInterval: number = null;
+  private lastProgressSeconds: number = null;
+  private additionalPlaybackProgressSeconds: number = 0;
+  private lastRenderTime: number = null;
 
   constructor(props: TrackProps) {
     super(props);
@@ -359,14 +360,37 @@ class Track extends React.Component<TrackProps, Partial<TrackState>> {
     context.fillRect(startPixel, 0, (endPixel - startPixel) * zoomFactor, this.props.height);
   }
 
+  private updateIntraFrameInfo = () => {
+    const { player } = this.props;
+    if (this.lastProgressSeconds && this.lastRenderTime) {
+      if (this.lastProgressSeconds === player.playbackProgressSeconds) {
+        const secondsSinceLastRender = (window.performance.now() - this.lastRenderTime) / 1000;
+        const estimatedSamplesProcessedSinceLastRender = secondsSinceLastRender * player.audioContext.sampleRate;
+        this.additionalPlaybackProgressSeconds += ((estimatedSamplesProcessedSinceLastRender / player.audioContext.sampleRate) / player.alpha);
+      } else {
+        this.additionalPlaybackProgressSeconds = 0;
+        this.lastProgressSeconds = player.playbackProgressSeconds;
+      }
+    } else {
+      this.lastProgressSeconds = player.playbackProgressSeconds;
+    }
+
+    if ((player.playbackProgressSeconds + this.additionalPlaybackProgressSeconds) >= (player.loopEndSeconds - player.loopStartSeconds)) {
+      player.position = player.loopStartPercent * player.buffer.length;
+      player.playbackProgressSeconds = 0;
+    }
+
+    this.lastRenderTime = window.performance.now();
+  }
+
   private getPlaybackRenderInfo = (): PlaybackRenderInfo => {
     const { player, width } = this.props;
-    if (!this.isPlaying || player.currentPlaybackTime === null) { return null; }
+    if (!this.isPlaying) { return null; }
     const { lastPlaybackLocators, zoomLocators: { startPercent: zoomStartPercent, endPercent: zoomEndPercent } } = this.state;
     const { startPercent: trueLocatorStartPercent, endPercent: trueLocatorEndPercent } = this.getTrueLocators(lastPlaybackLocators);
     const { startPercent: relativeLocatorStartPercent } = this.getRelativeLocators(lastPlaybackLocators);
     const zoomFactor = 1 / (zoomEndPercent - zoomStartPercent);
-    const progressPercent = (player.currentPlaybackTime / player.duration);
+    const progressPercent = (player.playbackProgressSeconds + this.additionalPlaybackProgressSeconds) / player.buffer.duration;
     const progressWidth = (width * progressPercent) % ((width * trueLocatorEndPercent) - (width * trueLocatorStartPercent));
     const startPixel = width * relativeLocatorStartPercent;
     const endPixel = startPixel + progressWidth;
@@ -396,7 +420,7 @@ class Track extends React.Component<TrackProps, Partial<TrackState>> {
         player.play(this.getTrueLocators(lastPlaybackLocators));
         if (!this.isPlaying) {
           this.isPlaying = true;
-          this.playbackDrawInterval = window.setInterval(this.draw, PLAYBACK_DRAW_MILLISECONDS);
+          window.requestAnimationFrame(this.animatePlayback);
         }
       }
     });
@@ -404,9 +428,15 @@ class Track extends React.Component<TrackProps, Partial<TrackState>> {
 
   private stopPlayback = () => {
     this.props.player.stop();
-    window.clearInterval(this.playbackDrawInterval);
     this.isPlaying = false;
+  }
+
+  private animatePlayback: FrameRequestCallback = () => {
+    this.updateIntraFrameInfo();
     this.draw();
+    if (this.isPlaying) {
+      window.requestAnimationFrame(this.animatePlayback);
+    }
   }
 }
 

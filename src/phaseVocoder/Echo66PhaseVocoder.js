@@ -4,8 +4,9 @@ import CBuffer from 'CBuffer'
 // forked from: https://github.com/echo66/echo66.github.io/tree/master/demos/PhaseVocoder.js
 
 // TODO: handle mono 
-
 export default function BufferedPV(frameSize) {
+
+
 
   var _frameSize = frameSize || 4096;
   var _pvL = new PhaseVocoder(_frameSize, 44100); _pvL.init();
@@ -28,7 +29,7 @@ export default function BufferedPV(frameSize) {
     var ir = _buffer.getChannelData(1);
     var ol = outputAudioBuffer.getChannelData(0);
     var or = outputAudioBuffer.getChannelData(1);
-
+    
     while (_midBufL.length > 0 && sampleCounter < outputAudioBuffer.length) {
       var i = sampleCounter++;
       ol[i] = _midBufL.shift();
@@ -48,7 +49,6 @@ export default function BufferedPV(frameSize) {
         _pvR.set_alpha(_newAlpha);
         _newAlpha = undefined;
       }
-
 
       /* LEFT */
       _pvL.process(bufL, _midBufL);
@@ -70,11 +70,6 @@ export default function BufferedPV(frameSize) {
     _buffer = newBuffer;
     _position = 0;
     _newAlpha = 1;
-  }
-
-  this.clear = function () {
-    _midBufL = new CBuffer(Math.round(_frameSize * 2));
-    _midBufR = new CBuffer(Math.round(_frameSize * 2));
   }
 
   Object.defineProperties(this, {
@@ -419,7 +414,7 @@ function PhaseVocoder(winSize, sampleRate) {
       _overlapFactor = 20;
     else
       _overlapFactor = 40;
-      
+
     /* "Fixed" synthesis hop size. */
     _Ha = round(_winSize / _overlapFactor);
     _Hs = round(newAlpha * _Ha);
