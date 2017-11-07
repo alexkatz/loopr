@@ -33151,44 +33151,43 @@ var BUFFER_SIZE = 4096;
 var Player = /** @class */ (function () {
     function Player() {
         var _this = this;
-        this.audioContext = null;
         this.internalBuffer = null;
         this.audioBufferChangedListeners = [];
-        this.startedAt = null;
-        this.source = null;
         this.scriptNode = null;
         this.gainNode = null;
         this.phaseVocoder = null;
+        // PUBLIC 
+        this.audioContext = null;
+        this.startedAt = null;
+        this.playbackProgressSeconds = null;
+        this.setBuffer = function (buffer) {
+            _this.internalBuffer = buffer;
+            _this.audioBufferChangedListeners.forEach(function (listener) { return listener(buffer); });
+            if (_this.startedAt !== null) {
+                _this.scriptNode.disconnect(_this.gainNode);
+                _this.gainNode.disconnect(_this.audioContext.destination);
+                _this.stop();
+            }
+            _this.phaseVocoder = new Echo66PhaseVocoder_1.default(FRAME_SIZE);
+            _this.phaseVocoder.set_audio_buffer(_this.buffer);
+            _this.phaseVocoder.alpha = 1;
+            _this.phaseVocoder.position = 0;
+            _this.scriptNode = _this.audioContext.createScriptProcessor(4096, _this.buffer.numberOfChannels, _this.buffer.numberOfChannels);
+            _this.gainNode = _this.audioContext.createGain();
+            _this.scriptNode.connect(_this.gainNode);
+            _this.gainNode.connect(_this.audioContext.destination);
+            _this.scriptNode.onaudioprocess = _this.onAudioProcess;
+        };
         this.setAudioFile = function (file) {
             var fileReader = new FileReader();
-            fileReader.onloadend = function () { return __awaiter(_this, void 0, void 0, function () {
-                var _a;
-                return __generator(this, function (_b) {
-                    switch (_b.label) {
-                        case 0:
-                            _a = this;
-                            return [4 /*yield*/, this.audioContext.decodeAudioData(fileReader.result)];
-                        case 1:
-                            _a.buffer = _b.sent();
-                            if (this.startedAt !== null) {
-                                this.source.disconnect(this.scriptNode);
-                                this.scriptNode.disconnect(this.gainNode);
-                                this.gainNode.disconnect(this.audioContext.destination);
-                                this.stop();
-                            }
-                            this.phaseVocoder = new Echo66PhaseVocoder_1.default(FRAME_SIZE);
-                            this.phaseVocoder.set_audio_buffer(this.buffer);
-                            this.phaseVocoder.alpha = 1;
-                            this.phaseVocoder.position = 0;
-                            this.scriptNode = this.audioContext.createScriptProcessor(4096, this.buffer.numberOfChannels, this.buffer.numberOfChannels);
-                            this.gainNode = this.audioContext.createGain();
-                            this.scriptNode.connect(this.gainNode);
-                            this.gainNode.connect(this.audioContext.destination);
-                            this.scriptNode.onaudioprocess = this.onAudioProcess;
-                            return [2 /*return*/];
-                    }
-                });
-            }); };
+            fileReader.onloadend = function () { return __awaiter(_this, void 0, void 0, function () { var _a; return __generator(this, function (_b) {
+                switch (_b.label) {
+                    case 0:
+                        _a = this.setBuffer;
+                        return [4 /*yield*/, this.audioContext.decodeAudioData(fileReader.result)];
+                    case 1: return [2 /*return*/, _a.apply(this, [_b.sent()])];
+                }
+            }); }); };
             fileReader.readAsArrayBuffer(file);
         };
         this.onAudioBufferChanged = function (listener) {
@@ -33200,70 +33199,40 @@ var Player = /** @class */ (function () {
         };
         this.play = function (_a) {
             var startPercent = _a.startPercent, endPercent = _a.endPercent;
-            if (_this.source) {
-                _this.source.stop();
-            }
-            _this.gainNode.gain.value = 1;
-            _this.source = _this.audioContext.createBufferSource();
-            _this.source.buffer = _this.buffer;
-            _this.source.connect(_this.scriptNode);
-            var startSeconds = _this.buffer.duration * startPercent;
-            var endSeconds = _this.buffer.duration * endPercent;
+            _this.loopStartPercent = startPercent;
+            _this.loopEndPercent = endPercent;
             _this.phaseVocoder.position = _this.buffer.length * startPercent;
-            _this.source.loopStart = startSeconds;
-            _this.source.loopEnd = endSeconds;
-            _this.source.loop = true;
             _this.startedAt = _this.audioContext.currentTime;
-            _this.source.start(0, startSeconds);
         };
         this.stop = function () {
-            _this.gainNode.gain.value = 0;
             _this.startedAt = null;
-            _this.phaseVocoder.clear();
-            _this.previousOverallProgress = null;
-            if (_this.source) {
-                _this.source.stop();
-                _this.source = null;
-            }
+            _this.loopStartPercent = null;
+            _this.loopEndPercent = null;
         };
         this.setLoopFromLocators = function (_a) {
             var startPercent = _a.startPercent, endPercent = _a.endPercent;
-            if (_this.source && _this.startedAt !== null) {
+            if (_this.startedAt !== null) {
                 var startSeconds = _this.buffer.duration * startPercent;
                 var endSeconds = _this.buffer.duration * endPercent;
                 _this.phaseVocoder.position = _this.buffer.length * startPercent;
-                _this.source.loopStart = startSeconds;
-                _this.source.loopEnd = endSeconds;
             }
         };
-        // PRIVATE METHODS 
-        this.previousOverallProgress = null;
+        // PRIVATE 
         this.onAudioProcess = function (_a) {
-            var inputBuffer = _a.inputBuffer, outputBuffer = _a.outputBuffer, playbackTime = _a.playbackTime;
+            var outputBuffer = _a.outputBuffer;
             if (_this.startedAt !== null) {
-                var loopDuration = _this.alphaLoopEnd - _this.alphaLoopStart;
-                var overallProgress = playbackTime - _this.startedAt;
-                if (_this.previousOverallProgress !== null) {
-                    var newProgress = overallProgress - _this.previousOverallProgress;
-                    var loopProgress = overallProgress % loopDuration;
-                    if ((loopProgress + newProgress) > (loopDuration - 0.001)) {
-                        _this.phaseVocoder.position = _this.buffer.length * (_this.alphaLoopStart / _this.alphaDuration); // this should not be happening here...
-                    }
-                }
+                _this.playbackProgressSeconds = (_this.playbackProgressSeconds == null ? 0 : _this.playbackProgressSeconds) + (outputBuffer.length / _this.audioContext.sampleRate) / _this.alpha;
                 _this.phaseVocoder.process(outputBuffer);
-                _this.previousOverallProgress = overallProgress;
             }
             else {
+                _this.playbackProgressSeconds = null;
                 for (var channel = 0; channel < outputBuffer.numberOfChannels; channel += 1) {
-                    var inputData = inputBuffer.getChannelData(channel);
                     var outputData = outputBuffer.getChannelData(channel);
-                    for (var sample = 0; sample < inputBuffer.length; sample += 1) {
-                        outputData[sample] = inputData[sample];
+                    for (var sample = 0; sample < outputData.length; sample += 1) {
+                        outputData[sample] = 0;
                     }
                 }
             }
-        };
-        this.updateVocoderPosition = function () {
         };
         var ValidAudioContext = window.AudioContext || window.webkitAudioContext;
         if (ValidAudioContext) {
@@ -33271,13 +33240,8 @@ var Player = /** @class */ (function () {
         }
     }
     Object.defineProperty(Player.prototype, "buffer", {
-        // PROPERTIES
         get: function () {
             return this.internalBuffer;
-        },
-        set: function (buffer) {
-            this.internalBuffer = buffer;
-            this.audioBufferChangedListeners.forEach(function (listener) { return listener(buffer); });
         },
         enumerable: true,
         configurable: true
@@ -33294,41 +33258,32 @@ var Player = /** @class */ (function () {
         enumerable: true,
         configurable: true
     });
-    Object.defineProperty(Player.prototype, "currentPlaybackTime", {
-        // PUBLIC METHODS
+    Object.defineProperty(Player.prototype, "position", {
         get: function () {
-            if (this.startedAt) {
-                return this.audioContext.currentTime - this.startedAt;
+            return this.phaseVocoder.position;
+        },
+        set: function (value) {
+            this.phaseVocoder.position = value;
+        },
+        enumerable: true,
+        configurable: true
+    });
+    Object.defineProperty(Player.prototype, "loopStartSeconds", {
+        get: function () {
+            if (!this.loopStartPercent) {
+                return null;
             }
-            return null;
+            return this.loopStartPercent * this.buffer.duration;
         },
         enumerable: true,
         configurable: true
     });
-    Object.defineProperty(Player.prototype, "duration", {
+    Object.defineProperty(Player.prototype, "loopEndSeconds", {
         get: function () {
-            return this.buffer.duration;
-        },
-        enumerable: true,
-        configurable: true
-    });
-    Object.defineProperty(Player.prototype, "alphaDuration", {
-        get: function () {
-            return this.buffer.duration * this.alpha;
-        },
-        enumerable: true,
-        configurable: true
-    });
-    Object.defineProperty(Player.prototype, "alphaLoopStart", {
-        get: function () {
-            return this.startedAt !== null ? this.source.loopStart * this.alpha : null;
-        },
-        enumerable: true,
-        configurable: true
-    });
-    Object.defineProperty(Player.prototype, "alphaLoopEnd", {
-        get: function () {
-            return this.startedAt !== null ? this.source.loopEnd * this.alpha : null;
+            if (!this.loopEndPercent) {
+                return null;
+            }
+            return this.loopEndPercent * this.buffer.duration;
         },
         enumerable: true,
         configurable: true
@@ -33355,8 +33310,9 @@ Object.defineProperty(__webpack_exports__, "__esModule", { value: true });
 // forked from: https://github.com/echo66/echo66.github.io/tree/master/demos/PhaseVocoder.js
 
 // TODO: handle mono 
-
 function BufferedPV(frameSize) {
+
+
 
   var _frameSize = frameSize || 4096;
   var _pvL = new PhaseVocoder(_frameSize, 44100); _pvL.init();
@@ -33379,7 +33335,7 @@ function BufferedPV(frameSize) {
     var ir = _buffer.getChannelData(1);
     var ol = outputAudioBuffer.getChannelData(0);
     var or = outputAudioBuffer.getChannelData(1);
-
+    
     while (_midBufL.length > 0 && sampleCounter < outputAudioBuffer.length) {
       var i = sampleCounter++;
       ol[i] = _midBufL.shift();
@@ -33399,7 +33355,6 @@ function BufferedPV(frameSize) {
         _pvR.set_alpha(_newAlpha);
         _newAlpha = undefined;
       }
-
 
       /* LEFT */
       _pvL.process(bufL, _midBufL);
@@ -33421,11 +33376,6 @@ function BufferedPV(frameSize) {
     _buffer = newBuffer;
     _position = 0;
     _newAlpha = 1;
-  }
-
-  this.clear = function () {
-    _midBufL = new __WEBPACK_IMPORTED_MODULE_1_CBuffer___default.a(Math.round(_frameSize * 2));
-    _midBufR = new __WEBPACK_IMPORTED_MODULE_1_CBuffer___default.a(Math.round(_frameSize * 2));
   }
 
   Object.defineProperties(this, {
@@ -33770,7 +33720,7 @@ function PhaseVocoder(winSize, sampleRate) {
       _overlapFactor = 20;
     else
       _overlapFactor = 40;
-      
+
     /* "Fixed" synthesis hop size. */
     _Ha = round(_winSize / _overlapFactor);
     _Hs = round(newAlpha * _Ha);
@@ -34401,7 +34351,6 @@ var PLAYBACK_BAR_WIDTH = 5;
 var HEADER_HEIGHT = 70;
 var CANVAS_HEIGHT_PERCENT = 0.7;
 var MIN_LOOP_PERCENT = 0.001;
-var PLAYBACK_DRAW_MILLISECONDS = 30;
 var DEFAULT_LOCATORS = { startPercent: 0, endPercent: 1 };
 var GET_CANVAS_HEIGHT = function (height) { return (height - HEADER_HEIGHT) * CANVAS_HEIGHT_PERCENT; };
 var Locator;
@@ -34415,7 +34364,9 @@ var Track = /** @class */ (function (_super) {
         var _this = _super.call(this, props) || this;
         _this.canvas = null;
         _this.isPlaying = false;
-        _this.playbackDrawInterval = null;
+        _this.lastProgressSeconds = null;
+        _this.additionalPlaybackProgressSeconds = 0;
+        _this.lastRenderTime = null;
         // MOUSE EVENTS
         _this.onMouseDown = function (e) {
             var width = _this.props.width;
@@ -34650,16 +34601,38 @@ var Track = /** @class */ (function (_super) {
             context.fillStyle = colors_1.Color.SELECTION_COLOR;
             context.fillRect(startPixel, 0, (endPixel - startPixel) * zoomFactor, _this.props.height);
         };
+        _this.updateIntraFrameInfo = function () {
+            var player = _this.props.player;
+            if (_this.lastProgressSeconds && _this.lastRenderTime) {
+                if (_this.lastProgressSeconds === player.playbackProgressSeconds) {
+                    var secondsSinceLastRender = (window.performance.now() - _this.lastRenderTime) / 1000;
+                    var estimatedSamplesProcessedSinceLastRender = secondsSinceLastRender * player.audioContext.sampleRate;
+                    _this.additionalPlaybackProgressSeconds += ((estimatedSamplesProcessedSinceLastRender / player.audioContext.sampleRate) / player.alpha);
+                }
+                else {
+                    _this.additionalPlaybackProgressSeconds = 0;
+                    _this.lastProgressSeconds = player.playbackProgressSeconds;
+                }
+            }
+            else {
+                _this.lastProgressSeconds = player.playbackProgressSeconds;
+            }
+            if ((player.playbackProgressSeconds + _this.additionalPlaybackProgressSeconds) >= (player.loopEndSeconds - player.loopStartSeconds)) {
+                player.position = player.loopStartPercent * player.buffer.length;
+                player.playbackProgressSeconds = 0;
+            }
+            _this.lastRenderTime = window.performance.now();
+        };
         _this.getPlaybackRenderInfo = function () {
             var _a = _this.props, player = _a.player, width = _a.width;
-            if (!_this.isPlaying || player.currentPlaybackTime === null) {
+            if (!_this.isPlaying) {
                 return null;
             }
             var _b = _this.state, lastPlaybackLocators = _b.lastPlaybackLocators, _c = _b.zoomLocators, zoomStartPercent = _c.startPercent, zoomEndPercent = _c.endPercent;
             var _d = _this.getTrueLocators(lastPlaybackLocators), trueLocatorStartPercent = _d.startPercent, trueLocatorEndPercent = _d.endPercent;
             var relativeLocatorStartPercent = _this.getRelativeLocators(lastPlaybackLocators).startPercent;
             var zoomFactor = 1 / (zoomEndPercent - zoomStartPercent);
-            var progressPercent = (player.currentPlaybackTime / player.duration);
+            var progressPercent = (player.playbackProgressSeconds + _this.additionalPlaybackProgressSeconds) / player.buffer.duration;
             var progressWidth = (width * progressPercent) % ((width * trueLocatorEndPercent) - (width * trueLocatorStartPercent));
             var startPixel = width * relativeLocatorStartPercent;
             var endPixel = startPixel + progressWidth;
@@ -34690,16 +34663,21 @@ var Track = /** @class */ (function (_super) {
                     player.play(_this.getTrueLocators(lastPlaybackLocators));
                     if (!_this.isPlaying) {
                         _this.isPlaying = true;
-                        _this.playbackDrawInterval = window.setInterval(_this.draw, PLAYBACK_DRAW_MILLISECONDS);
+                        window.requestAnimationFrame(_this.animatePlayback);
                     }
                 }
             });
         };
         _this.stopPlayback = function () {
             _this.props.player.stop();
-            window.clearInterval(_this.playbackDrawInterval);
             _this.isPlaying = false;
+        };
+        _this.animatePlayback = function () {
+            _this.updateIntraFrameInfo();
             _this.draw();
+            if (_this.isPlaying) {
+                window.requestAnimationFrame(_this.animatePlayback);
+            }
         };
         _this.state = { playbackLocators: DEFAULT_LOCATORS, waveformRects: [] };
         return _this;
