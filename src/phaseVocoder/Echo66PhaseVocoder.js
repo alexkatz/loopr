@@ -6,8 +6,6 @@ import CBuffer from 'CBuffer'
 // TODO: handle mono 
 export default function BufferedPV(frameSize) {
 
-
-
   var _frameSize = frameSize || 4096;
   var _pvL = new PhaseVocoder(_frameSize, 44100); _pvL.init();
   var _pvR = new PhaseVocoder(_frameSize, 44100); _pvR.init();

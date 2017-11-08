@@ -100,7 +100,7 @@ class Track extends React.Component<TrackProps, Partial<TrackState>> {
   public componentDidUpdate(prevProps: TrackProps, prevState: TrackState) {
     if (this.state.zoomLocators !== prevState.zoomLocators) {
       this.setState({ waveformRects: this.getWaveformRects() });
-    } else {
+    } else if (!this.isPlaying) {
       this.draw();
     }
   }

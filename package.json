@@ -4,7 +4,6 @@
   "main": "dist/index.js",
   "license": "MIT",
   "devDependencies": {
-    "@types/radium": "^0.18.23",
     "@types/react": "^16.0.10",
     "@types/react-dom": "^16.0.1",
     "@types/react-dropzone": "^4.1.0",
@@ -28,7 +27,6 @@
   "dependencies": {
     "CBuffer": "^2.0.0",
     "dsp.js": "^1.0.1",
-    "radium": "^0.19.5",
     "react": "^16.0.0",
     "react-dom": "^16.0.0",
     "react-dropzone": "^4.2.0",

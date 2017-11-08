@@ -1,25 +1,22 @@
 import * as React from 'react';
 import { Color } from '../shared/colors';
 import { Constant } from '../shared/constants';
+import { Style } from '../shared/styles';
 
-interface AlphaSliderProps {
+interface PercentSliderProps {
   style?: React.CSSProperties;
-  maxAlpha: number;
-  minAlpha: number;
-  alpha: number;
+  percent: number;
   width: number;
-  onAlphaChange(alpha: number);
+  onPercentChange(percent: number);
+  onLabelChange?(value: string);
+  labelValue?: string;
 }
 
-interface AlphaSliderState {
-
-}
-
-class AlphaSlider extends React.Component<AlphaSliderProps, AlphaSliderState> {
+class PercentSlider extends React.Component<PercentSliderProps> {
   private containerDiv: HTMLDivElement = null;
   private isMouseDown: boolean = false;
 
-  constructor(props: AlphaSliderProps) {
+  constructor(props: PercentSliderProps) {
     super(props);
     this.state = {
       isMouseDown: false,
@@ -37,7 +34,7 @@ class AlphaSlider extends React.Component<AlphaSliderProps, AlphaSliderState> {
   }
 
   public render() {
-    const { style, width, alpha } = this.props;
+    const { style, width, percent, labelValue } = this.props;
     return (
       <div
         ref={node => this.containerDiv = node}
@@ -56,29 +53,20 @@ class AlphaSlider extends React.Component<AlphaSliderProps, AlphaSliderState> {
             top: 0,
             left: 0,
             height: '100%',
-            width: width * this.getCurrentPercent(),
+            width: width * percent,
             backgroundColor: Color.SELECTION_COLOR,
           }}
         />
         <div
           style={{
             paddingRight: Constant.PADDING,
+            ...Style.NO_SELECT,
           }}
         >
-          {((1 / alpha) * 100).toFixed(2) + '%'}
+          {labelValue}
         </div>
       </div>
     );
-  }
-
-  private getCurrentPercent = () => {
-    const { maxAlpha, minAlpha, alpha } = this.props;
-    const alphaDelta = maxAlpha - minAlpha;
-    const currentAlphaDelta = alpha - minAlpha;
-    let percent = currentAlphaDelta / alphaDelta;
-    if (percent < 0) { percent = 0; }
-    if (percent > 1) { percent = 1; }
-    return percent;
   }
 
   private onMouseDown = (e: React.MouseEvent<HTMLDivElement>) => {
@@ -100,16 +88,14 @@ class AlphaSlider extends React.Component<AlphaSliderProps, AlphaSliderState> {
   }
 
   private handleMouse = (e: MouseEvent) => {
-    const { width, maxAlpha, minAlpha, onAlphaChange } = this.props;
+    const { width, onPercentChange } = this.props;
     const { left } = this.containerDiv.getBoundingClientRect();
-    const alphaDelta = maxAlpha - minAlpha;
     const x = e.clientX - left;
-    const percent = x / width;
-    let alpha = (alphaDelta * percent) + minAlpha;
-    if (alpha < minAlpha) { alpha = minAlpha; }
-    if (alpha > maxAlpha) { alpha = maxAlpha; }
-    onAlphaChange(alpha);
+    let percent = x / width;
+    if (percent > 1) { percent = 1; }
+    if (percent < 0) { percent = 0; }
+    onPercentChange(percent);
   }
 }
 
-export { AlphaSlider };
+export { PercentSlider };
