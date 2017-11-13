@@ -1464,6 +1464,15 @@ var SortDirection = {
 "use strict";
 
 Object.defineProperty(exports, "__esModule", { value: true });
+var HEADER_HEIGHT = 70;
+var CANVAS_HEIGHT_PERCENT = 0.7;
+var MIN_ALPHA = 0.5;
+var MAX_ALPHA = 5;
+var GET_CANVAS_HEIGHT = function (height) { return (height - HEADER_HEIGHT) * CANVAS_HEIGHT_PERCENT; };
+var GET_ALPHA_FROM_SLIDER_PERCENT = function (sliderPercent) { return MIN_ALPHA + ((MAX_ALPHA - MIN_ALPHA) * sliderPercent); };
+var GET_ALPHA_FROM_ALPHA_PERCENT = function (alphaPercent) { return 1 / alphaPercent; };
+var GET_SLIDER_PERCENT_FROM_ALPHA = function (alpha) { return (alpha - MIN_ALPHA) / (MAX_ALPHA - MIN_ALPHA); };
+var GET_ALPHA_PERCENT_FROM_SLIDER_PERCENT = function (sliderPercent) { return 1 / GET_ALPHA_FROM_SLIDER_PERCENT(sliderPercent); };
 exports.Constant = {
     FontWeight: {
         LIGHT: 300,
@@ -1477,6 +1486,16 @@ exports.Constant = {
         ESCAPE: 27,
         S: 83,
     },
+    NO_OP: (function () { }),
+    HEADER_HEIGHT: HEADER_HEIGHT,
+    CANVAS_HEIGHT_PERCENT: CANVAS_HEIGHT_PERCENT,
+    MIN_ALPHA: MIN_ALPHA,
+    MAX_ALPHA: MAX_ALPHA,
+    GET_CANVAS_HEIGHT: GET_CANVAS_HEIGHT,
+    GET_ALPHA_FROM_SLIDER_PERCENT: GET_ALPHA_FROM_SLIDER_PERCENT,
+    GET_ALPHA_FROM_ALPHA_PERCENT: GET_ALPHA_FROM_ALPHA_PERCENT,
+    GET_SLIDER_PERCENT_FROM_ALPHA: GET_SLIDER_PERCENT_FROM_ALPHA,
+    GET_ALPHA_PERCENT_FROM_SLIDER_PERCENT: GET_ALPHA_PERCENT_FROM_SLIDER_PERCENT,
 };
 
 
@@ -33177,12 +33196,14 @@ var Player = /** @class */ (function () {
         this.phaseVocoder = null;
         // PUBLIC 
         this.audioContext = null;
-        this.startedAt = null;
+        this.playbackStartedAt = null;
         this.playbackProgressSeconds = null;
+        this.loopStartPercent = 0;
+        this.loopEndPercent = 1;
         this.setBuffer = function (buffer) {
             _this.internalBuffer = buffer;
             _this.audioBufferChangedListeners.forEach(function (listener) { return listener(buffer); });
-            if (_this.startedAt !== null) {
+            if (_this.playbackStartedAt !== null) {
                 _this.scriptNode.disconnect(_this.gainNode);
                 _this.gainNode.disconnect(_this.audioContext.destination);
                 _this.stop();
@@ -33216,30 +33237,33 @@ var Player = /** @class */ (function () {
                 _this.audioBufferChangedListeners = _this.audioBufferChangedListeners.filter(function (l, i) { return i !== index; });
             };
         };
-        this.play = function (_a) {
+        this.play = function () {
+            _this.phaseVocoder.position = _this.buffer.length * _this.loopStartPercent;
+            _this.playbackProgressSeconds = 0;
+            if (_this.playbackStartedAt === null) {
+                _this.playbackStartedAt = _this.audioContext.currentTime;
+            }
+        };
+        this.setLoop = function (_a) {
             var startPercent = _a.startPercent, endPercent = _a.endPercent;
+            var prevStartPercent = _this.loopStartPercent;
             _this.loopStartPercent = startPercent;
             _this.loopEndPercent = endPercent;
-            _this.phaseVocoder.position = _this.buffer.length * startPercent;
-            _this.startedAt = _this.audioContext.currentTime;
+            if (_this.playbackStartedAt !== null && prevStartPercent !== startPercent) {
+                _this.phaseVocoder.position = _this.buffer.length * startPercent;
+                _this.playbackProgressSeconds = 0;
+            }
         };
         this.stop = function () {
-            _this.startedAt = null;
+            _this.playbackStartedAt = null;
             _this.loopStartPercent = null;
             _this.loopEndPercent = null;
-        };
-        this.setLoopFromLocators = function (_a) {
-            var startPercent = _a.startPercent, endPercent = _a.endPercent;
-            if (_this.startedAt !== null) {
-                var startSeconds = _this.buffer.duration * startPercent;
-                var endSeconds = _this.buffer.duration * endPercent;
-                _this.phaseVocoder.position = _this.buffer.length * startPercent;
-            }
+            _this.playbackProgressSeconds = null;
         };
         // PRIVATE 
         this.onAudioProcess = function (_a) {
             var outputBuffer = _a.outputBuffer;
-            if (_this.startedAt !== null) {
+            if (_this.playbackStartedAt !== null) {
                 _this.playbackProgressSeconds = (_this.playbackProgressSeconds == null ? 0 : _this.playbackProgressSeconds) + (outputBuffer.length / _this.audioContext.sampleRate) / _this.alpha;
                 _this.phaseVocoder.process(outputBuffer);
             }
@@ -34300,19 +34324,11 @@ var React = __webpack_require__(1);
 var colors_1 = __webpack_require__(32);
 var constants_1 = __webpack_require__(41);
 var Track_1 = __webpack_require__(217);
-var PercentSlider_1 = __webpack_require__(218);
-var HEADER_HEIGHT = 70;
-var CANVAS_HEIGHT_PERCENT = 0.7;
-var MIN_ALPHA = 0.5;
-var MAX_ALPHA = 5;
-var GET_CANVAS_HEIGHT = function (height) { return (height - HEADER_HEIGHT) * CANVAS_HEIGHT_PERCENT; };
+var AlphaSlider_1 = __webpack_require__(218);
 var Interface = /** @class */ (function (_super) {
     __extends(Interface, _super);
     function Interface(props) {
         var _this = _super.call(this, props) || this;
-        _this.getAlphaFromSliderPercent = function (sliderPercent) { return MIN_ALPHA + ((MAX_ALPHA - MIN_ALPHA) * sliderPercent); };
-        _this.getSliderPercentFromAlpha = function (alpha) { return (alpha - MIN_ALPHA) / (MAX_ALPHA - MIN_ALPHA); };
-        _this.getAlphaPercentFromSliderPercent = function (sliderPercent) { return 1 / _this.getAlphaFromSliderPercent(sliderPercent); };
         _this.state = { alpha: 1 };
         return _this;
     }
@@ -34320,7 +34336,6 @@ var Interface = /** @class */ (function (_super) {
         var _this = this;
         var _a = this.props, width = _a.width, height = _a.height, audioBuffer = _a.audioBuffer, player = _a.player;
         var alpha = this.state.alpha;
-        var percent = this.getSliderPercentFromAlpha(alpha);
         return (React.createElement("div", { style: {
                 width: width,
                 height: height,
@@ -34330,20 +34345,20 @@ var Interface = /** @class */ (function (_super) {
                     color: colors_1.Color.MID_BLUE,
                     fontWeight: constants_1.Constant.FontWeight.REGULAR,
                     fontSize: 30,
-                    height: HEADER_HEIGHT,
+                    height: constants_1.Constant.HEADER_HEIGHT,
                     display: 'flex',
                     alignItems: 'center',
                     paddingLeft: constants_1.Constant.PADDING,
                 } },
-                "TimeStretcher",
-                React.createElement(PercentSlider_1.PercentSlider, { style: {
+                "stretchr",
+                React.createElement(AlphaSlider_1.AlphaSlider, { style: {
                         position: 'absolute',
                         top: 0,
                         left: 0,
                         width: '100%',
                         height: '100%',
-                    }, percent: percent, width: width, onPercentChange: function (percent) { return _this.setState({ alpha: _this.getAlphaFromSliderPercent(percent) }); }, labelValue: (this.getAlphaPercentFromSliderPercent(percent) * 100).toFixed(2) + "%" })),
-            React.createElement(Track_1.Track, { width: width, height: GET_CANVAS_HEIGHT(height), audioBuffer: audioBuffer, player: player, alpha: alpha })));
+                    }, alpha: alpha, width: width, onAlphaChange: function (alpha) { return _this.setState({ alpha: alpha }); } })),
+            React.createElement(Track_1.Track, { width: width, height: constants_1.Constant.GET_CANVAS_HEIGHT(height), audioBuffer: audioBuffer, player: player, alpha: alpha })));
     };
     return Interface;
 }(React.Component));
@@ -34378,8 +34393,8 @@ var DEFAULT_LOCATORS = { startPercent: 0, endPercent: 1 };
 var GET_CANVAS_HEIGHT = function (height) { return (height - HEADER_HEIGHT) * CANVAS_HEIGHT_PERCENT; };
 var Locator;
 (function (Locator) {
-    Locator[Locator["Start"] = 0] = "Start";
-    Locator[Locator["End"] = 1] = "End";
+    Locator["Start"] = "Start";
+    Locator["End"] = "End";
 })(Locator || (Locator = {}));
 var Track = /** @class */ (function (_super) {
     __extends(Track, _super);
@@ -34396,17 +34411,17 @@ var Track = /** @class */ (function (_super) {
             var _a = _this.getRelativeLocators(), startPercent = _a.startPercent, endPercent = _a.endPercent;
             var left = _this.canvas.getBoundingClientRect().left;
             var x = e.clientX - left;
-            var newStartPercent = x / width;
-            var isRemovingStartLocator = Math.abs(startPercent - newStartPercent) <= MIN_LOOP_PERCENT;
-            if (e.shiftKey && !(startPercent === 0 && endPercent === 1)) {
-                var midX = (startPercent + ((endPercent - startPercent) * 0.5)) * width;
+            var mouseDownPercent = x / width;
+            var isRemovingStartLocator = Math.abs(startPercent - mouseDownPercent) <= MIN_LOOP_PERCENT;
+            var midX = (startPercent + ((endPercent - startPercent) * 0.5)) * width;
+            if (e.shiftKey && startPercent !== 0 && endPercent === 1) {
                 if (x >= midX) {
                     _this.setState({
                         isMouseDown: true,
                         shiftLocator: Locator.End,
-                        playbackLocators: {
+                        loopLocators: {
                             startPercent: startPercent,
-                            endPercent: x / width,
+                            endPercent: mouseDownPercent,
                         },
                     });
                 }
@@ -34414,8 +34429,30 @@ var Track = /** @class */ (function (_super) {
                     _this.setState({
                         isMouseDown: true,
                         shiftLocator: Locator.Start,
-                        playbackLocators: {
-                            startPercent: x / width,
+                        loopLocators: {
+                            startPercent: mouseDownPercent,
+                            endPercent: startPercent,
+                        },
+                    });
+                }
+            }
+            else if (e.shiftKey && startPercent !== 0 && endPercent !== 1) {
+                if (x >= midX) {
+                    _this.setState({
+                        isMouseDown: true,
+                        shiftLocator: Locator.End,
+                        loopLocators: {
+                            startPercent: startPercent,
+                            endPercent: mouseDownPercent,
+                        },
+                    });
+                }
+                else {
+                    _this.setState({
+                        isMouseDown: true,
+                        shiftLocator: Locator.Start,
+                        loopLocators: {
+                            startPercent: mouseDownPercent,
                             endPercent: endPercent,
                         },
                     });
@@ -34425,22 +34462,22 @@ var Track = /** @class */ (function (_super) {
                 _this.setState({
                     isMouseDown: true,
                     shiftLocator: null,
-                    playbackLocators: {
-                        startPercent: isRemovingStartLocator ? 0 : newStartPercent,
+                    loopLocators: {
+                        startPercent: isRemovingStartLocator ? 0 : mouseDownPercent,
                         endPercent: 1,
                     },
                 }, function () { return isRemovingStartLocator && _this.stopPlayback(); });
             }
         };
         _this.onMouseMove = function (e) {
-            var _a = _this.state, isMouseDown = _a.isMouseDown, shiftLocator = _a.shiftLocator, _b = _a.playbackLocators, startPercent = _b.startPercent, endPercent = _b.endPercent;
+            var _a = _this.state, shiftLocator = _a.shiftLocator, _b = _a.loopLocators, startPercent = _b.startPercent, endPercent = _b.endPercent, isMouseDown = _a.isMouseDown;
             if (isMouseDown) {
                 var width = _this.props.width;
                 var left = _this.canvas.getBoundingClientRect().left;
                 var x = e.clientX - left;
                 if (shiftLocator !== null) {
                     _this.setState({
-                        playbackLocators: {
+                        loopLocators: {
                             startPercent: shiftLocator === Locator.Start ? x / width : startPercent,
                             endPercent: shiftLocator === Locator.End ? x / width : endPercent,
                         },
@@ -34452,26 +34489,33 @@ var Track = /** @class */ (function (_super) {
             }
         };
         _this.onMouseUp = function (e) {
-            var _a = _this.state, playbackLocators = _a.playbackLocators, isMouseDown = _a.isMouseDown;
-            if (playbackLocators && isMouseDown) {
-                _this.handleMouse(e.clientX, playbackLocators.startPercent, true);
+            var _a = _this.state, loopLocators = _a.loopLocators, isMouseDown = _a.isMouseDown;
+            if (loopLocators && isMouseDown) {
+                _this.handleMouse(e.clientX, loopLocators.startPercent, true);
             }
         };
         _this.handleMouse = function (clientX, startPercent, isMouseUp) {
             if (isMouseUp === void 0) { isMouseUp = false; }
-            var width = _this.props.width;
-            var shiftLocator = _this.state.shiftLocator;
+            var _a = _this.props, width = _a.width, player = _a.player;
+            var _b = _this.state, shiftLocator = _b.shiftLocator, originalEndPercent = _b.loopLocators.endPercent;
+            if (startPercent === 0 && originalEndPercent === 1) {
+                return;
+            }
             var left = _this.canvas.getBoundingClientRect().left;
             var x = clientX - left;
             var endPercent = x / width;
             _this.setState({
                 isMouseDown: !isMouseUp,
                 shiftLocator: isMouseUp ? null : shiftLocator,
-                playbackLocators: {
+                loopLocators: {
                     startPercent: startPercent,
-                    endPercent: Math.abs(startPercent - endPercent) > MIN_LOOP_PERCENT ? endPercent : 1,
+                    endPercent: !shiftLocator || shiftLocator !== Locator.Start ? (Math.abs(startPercent - endPercent) > MIN_LOOP_PERCENT ? endPercent : 1) : originalEndPercent,
                 },
-            }, function () { return _this.isPlaying && isMouseUp && _this.startPlayback(); });
+            }, function () {
+                if (_this.isPlaying && isMouseUp) {
+                    _this.updatePlayback();
+                }
+            });
         };
         _this.onKeyDown = function (e) {
             if (!e.metaKey) {
@@ -34509,20 +34553,18 @@ var Track = /** @class */ (function (_super) {
             window.removeEventListener('mouseup', _this.onMouseUp);
             window.removeEventListener('mousemove', _this.onMouseMove);
         };
-        _this.zoomIn = function (zoomLocators) {
-            _this.setChannelData(_this.props.audioBuffer, zoomLocators);
-        };
+        _this.zoomIn = function (zoomLocators) { return _this.setChannelData(_this.props.audioBuffer, zoomLocators); };
         _this.zoomOut = function () {
             if (_this.state.zoomLocators === DEFAULT_LOCATORS) {
                 return;
             }
-            var playbackLocators = _this.getTrueLocators(_this.state.playbackLocators);
-            _this.setChannelData(_this.props.audioBuffer, DEFAULT_LOCATORS, playbackLocators, playbackLocators);
+            var loopLocators = _this.getTrueLocators(_this.state.loopLocators);
+            _this.setChannelData(_this.props.audioBuffer, DEFAULT_LOCATORS, loopLocators, loopLocators);
         };
-        _this.setChannelData = function (audioBuffer, zoomLocators, playbackLocators, lastPlaybackLocators) {
+        _this.setChannelData = function (audioBuffer, zoomLocators, loopLocators, lastLoopLocators) {
             if (zoomLocators === void 0) { zoomLocators = DEFAULT_LOCATORS; }
-            if (playbackLocators === void 0) { playbackLocators = DEFAULT_LOCATORS; }
-            if (lastPlaybackLocators === void 0) { lastPlaybackLocators = DEFAULT_LOCATORS; }
+            if (loopLocators === void 0) { loopLocators = DEFAULT_LOCATORS; }
+            if (lastLoopLocators === void 0) { lastLoopLocators = DEFAULT_LOCATORS; }
             var getSubArray = function (channelData) { return channelData.slice(Math.round(channelData.length * zoomLocators.startPercent), Math.round(channelData.length * zoomLocators.endPercent)); };
             var leftChannelData = getSubArray(audioBuffer.getChannelData(0));
             var rightChannelData = audioBuffer.numberOfChannels > 1 ? getSubArray(audioBuffer.getChannelData(1)) : null;
@@ -34533,8 +34575,8 @@ var Track = /** @class */ (function (_super) {
                 lowPeak: lowPeak,
                 highPeak: highPeak,
                 zoomLocators: zoomLocators,
-                playbackLocators: playbackLocators,
-                lastPlaybackLocators: lastPlaybackLocators,
+                loopLocators: loopLocators,
+                lastLoopLocators: lastLoopLocators,
             });
         };
         _this.getPeaks = function () {
@@ -34651,9 +34693,9 @@ var Track = /** @class */ (function (_super) {
             if (!_this.isPlaying) {
                 return null;
             }
-            var _b = _this.state, lastPlaybackLocators = _b.lastPlaybackLocators, _c = _b.zoomLocators, zoomStartPercent = _c.startPercent, zoomEndPercent = _c.endPercent;
-            var _d = _this.getTrueLocators(lastPlaybackLocators), trueLocatorStartPercent = _d.startPercent, trueLocatorEndPercent = _d.endPercent;
-            var relativeLocatorStartPercent = _this.getRelativeLocators(lastPlaybackLocators).startPercent;
+            var _b = _this.state, lastLoopLocators = _b.lastLoopLocators, _c = _b.zoomLocators, zoomStartPercent = _c.startPercent, zoomEndPercent = _c.endPercent;
+            var _d = _this.getTrueLocators(lastLoopLocators), trueLocatorStartPercent = _d.startPercent, trueLocatorEndPercent = _d.endPercent;
+            var relativeLocatorStartPercent = _this.getRelativeLocators(lastLoopLocators).startPercent;
             var zoomFactor = 1 / (zoomEndPercent - zoomStartPercent);
             var progressPercent = (player.playbackProgressSeconds + _this.additionalPlaybackProgressSeconds) / player.buffer.duration;
             var progressWidth = (width * progressPercent) % ((width * trueLocatorEndPercent) - (width * trueLocatorStartPercent));
@@ -34662,7 +34704,7 @@ var Track = /** @class */ (function (_super) {
             return { startPixel: startPixel, endPixel: endPixel, zoomFactor: zoomFactor };
         };
         _this.getRelativeLocators = function (_a) {
-            var _b = _a === void 0 ? _this.state.playbackLocators : _a, locator1Percent = _b.startPercent, locator2Percent = _b.endPercent;
+            var _b = _a === void 0 ? _this.state.loopLocators : _a, locator1Percent = _b.startPercent, locator2Percent = _b.endPercent;
             var startPercent = (locator2Percent === null) || (locator1Percent <= locator2Percent) ? locator1Percent : locator2Percent;
             var endPercent = startPercent === locator1Percent ? locator2Percent : locator1Percent;
             return { startPercent: startPercent, endPercent: endPercent };
@@ -34674,21 +34716,21 @@ var Track = /** @class */ (function (_super) {
             var trueEnd = zoomStart + ((zoomEnd - zoomStart) * endPercent);
             return { startPercent: trueStart, endPercent: trueEnd };
         };
-        _this.startPlayback = function (continuePlayback) {
-            if (continuePlayback === void 0) { continuePlayback = false; }
-            var lastPlaybackLocators = _this.getRelativeLocators();
-            var player = _this.props.player;
-            _this.setState({ lastPlaybackLocators: lastPlaybackLocators }, function () {
-                if (_this.isPlaying && continuePlayback) {
-                    player.setLoopFromLocators(_this.getTrueLocators(lastPlaybackLocators));
+        _this.startPlayback = function () {
+            _this.updatePlayback(function () {
+                _this.props.player.play();
+                if (!_this.isPlaying) {
+                    _this.isPlaying = true;
+                    window.requestAnimationFrame(_this.animatePlayback);
                 }
-                else {
-                    player.play(_this.getTrueLocators(lastPlaybackLocators));
-                    if (!_this.isPlaying) {
-                        _this.isPlaying = true;
-                        window.requestAnimationFrame(_this.animatePlayback);
-                    }
-                }
+            });
+        };
+        _this.updatePlayback = function (callback) {
+            if (callback === void 0) { callback = constants_1.Constant.NO_OP; }
+            var lastLoopLocators = _this.getRelativeLocators();
+            _this.setState({ lastLoopLocators: lastLoopLocators }, function () {
+                _this.props.player.setLoop(_this.getTrueLocators(lastLoopLocators));
+                callback();
             });
         };
         _this.stopPlayback = function () {
@@ -34702,7 +34744,7 @@ var Track = /** @class */ (function (_super) {
                 window.requestAnimationFrame(_this.animatePlayback);
             }
         };
-        _this.state = { playbackLocators: DEFAULT_LOCATORS, waveformRects: [] };
+        _this.state = { loopLocators: DEFAULT_LOCATORS, waveformRects: [] };
         return _this;
     }
     Track.prototype.componentWillMount = function () {
@@ -34731,10 +34773,11 @@ var Track = /** @class */ (function (_super) {
         }
     };
     Track.prototype.componentDidUpdate = function (prevProps, prevState) {
-        if (this.state.zoomLocators !== prevState.zoomLocators) {
-            this.setState({ waveformRects: this.getWaveformRects() });
+        if (this.state.zoomLocators !== prevState.zoomLocators || this.props.width !== prevProps.width) {
+            this.setState({ waveformRects: this.getWaveformRects() }, this.draw);
+            return;
         }
-        else if (!this.isPlaying) {
+        if (!this.isPlaying) {
             this.draw();
         }
     };
@@ -34780,9 +34823,9 @@ var React = __webpack_require__(1);
 var colors_1 = __webpack_require__(32);
 var constants_1 = __webpack_require__(41);
 var styles_1 = __webpack_require__(100);
-var PercentSlider = /** @class */ (function (_super) {
-    __extends(PercentSlider, _super);
-    function PercentSlider(props) {
+var AlphaSlider = /** @class */ (function (_super) {
+    __extends(AlphaSlider, _super);
+    function AlphaSlider(props) {
         var _this = _super.call(this, props) || this;
         _this.containerDiv = null;
         _this.isMouseDown = false;
@@ -34802,7 +34845,7 @@ var PercentSlider = /** @class */ (function (_super) {
             }
         };
         _this.handleMouse = function (e) {
-            var _a = _this.props, width = _a.width, onPercentChange = _a.onPercentChange;
+            var _a = _this.props, width = _a.width, onAlphaChange = _a.onAlphaChange;
             var left = _this.containerDiv.getBoundingClientRect().left;
             var x = e.clientX - left;
             var percent = x / width;
@@ -34812,24 +34855,34 @@ var PercentSlider = /** @class */ (function (_super) {
             if (percent < 0) {
                 percent = 0;
             }
-            onPercentChange(percent);
+            var alpha = constants_1.Constant.GET_ALPHA_FROM_SLIDER_PERCENT(percent);
+            if (e.shiftKey) {
+                var alphaPercent = constants_1.Constant.GET_ALPHA_PERCENT_FROM_SLIDER_PERCENT(percent);
+                var roundedAlphaPercent = Math.round(alphaPercent * 100) / 100;
+                alpha = constants_1.Constant.GET_ALPHA_FROM_ALPHA_PERCENT(roundedAlphaPercent);
+            }
+            else if (e.altKey) {
+                alpha = 1;
+            }
+            onAlphaChange(alpha);
         };
         _this.state = {
             isMouseDown: false,
         };
         return _this;
     }
-    PercentSlider.prototype.componentDidMount = function () {
+    AlphaSlider.prototype.componentDidMount = function () {
         window.addEventListener('mousemove', this.onMouseMove);
         window.addEventListener('mouseup', this.onMouseUp);
     };
-    PercentSlider.prototype.componentWillUnmount = function () {
-        window.addEventListener('mousemove', this.onMouseMove);
-        window.addEventListener('mouseup', this.onMouseUp);
+    AlphaSlider.prototype.componentWillUnmount = function () {
+        window.removeEventListener('mousemove', this.onMouseMove);
+        window.removeEventListener('mouseup', this.onMouseUp);
     };
-    PercentSlider.prototype.render = function () {
+    AlphaSlider.prototype.render = function () {
         var _this = this;
-        var _a = this.props, style = _a.style, width = _a.width, percent = _a.percent, labelValue = _a.labelValue;
+        var _a = this.props, style = _a.style, width = _a.width, alpha = _a.alpha;
+        var percent = constants_1.Constant.GET_SLIDER_PERCENT_FROM_ALPHA(alpha);
         return (React.createElement("div", { ref: function (node) { return _this.containerDiv = node; }, onMouseDown: this.onMouseDown, style: __assign({ position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'flex-end' }, style) },
             React.createElement("div", { style: {
                     position: 'absolute',
@@ -34839,11 +34892,11 @@ var PercentSlider = /** @class */ (function (_super) {
                     width: width * percent,
                     backgroundColor: colors_1.Color.SELECTION_COLOR,
                 } }),
-            React.createElement("div", { style: __assign({ paddingRight: constants_1.Constant.PADDING }, styles_1.Style.NO_SELECT) }, labelValue)));
+            React.createElement("div", { style: __assign({ paddingRight: constants_1.Constant.PADDING }, styles_1.Style.NO_SELECT) }, (constants_1.Constant.GET_ALPHA_PERCENT_FROM_SLIDER_PERCENT(percent) * 100).toFixed(2) + "%")));
     };
-    return PercentSlider;
+    return AlphaSlider;
 }(React.Component));
-exports.PercentSlider = PercentSlider;
+exports.AlphaSlider = AlphaSlider;
 
 
 /***/ }),

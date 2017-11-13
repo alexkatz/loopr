@@ -30,8 +30,8 @@ interface PlaybackRenderInfo {
 }
 
 enum Locator {
-  Start,
-  End,
+  Start = 'Start',
+  End = 'End',
 }
 
 interface TrackProps {
@@ -47,12 +47,12 @@ interface TrackState {
   rightChannelData: Float32Array;
   lowPeak: number;
   highPeak: number;
-  isMouseDown: boolean;
-  lastPlaybackLocators: Locators; // TODO: draw these too, so locators stay present even if user alters locators during playback...
+  lastLoopLocators: Locators; // TODO: draw these too, so locators stay present even if user alters locators during playback...
   zoomLocators: Locators;
-  playbackLocators: Locators;
+  loopLocators: Locators;
   shiftLocator: Locator;
   waveformRects: WaveformRect[];
+  isMouseDown: boolean;
 }
 
 class Track extends React.Component<TrackProps, Partial<TrackState>> {
@@ -64,7 +64,7 @@ class Track extends React.Component<TrackProps, Partial<TrackState>> {
 
   constructor(props: TrackProps) {
     super(props);
-    this.state = { playbackLocators: DEFAULT_LOCATORS, waveformRects: [] };
+    this.state = { loopLocators: DEFAULT_LOCATORS, waveformRects: [] };
   }
 
   public componentWillMount() {
@@ -98,9 +98,12 @@ class Track extends React.Component<TrackProps, Partial<TrackState>> {
   }
 
   public componentDidUpdate(prevProps: TrackProps, prevState: TrackState) {
-    if (this.state.zoomLocators !== prevState.zoomLocators) {
-      this.setState({ waveformRects: this.getWaveformRects() });
-    } else if (!this.isPlaying) {
+    if (this.state.zoomLocators !== prevState.zoomLocators || this.props.width !== prevProps.width) {
+      this.setState({ waveformRects: this.getWaveformRects() }, this.draw);
+      return;
+    }
+
+    if (!this.isPlaying) {
       this.draw();
     }
   }
@@ -128,25 +131,45 @@ class Track extends React.Component<TrackProps, Partial<TrackState>> {
     const { startPercent, endPercent } = this.getRelativeLocators();
     const { left } = this.canvas.getBoundingClientRect();
     const x = e.clientX - left;
-    const newStartPercent = x / width;
-    const isRemovingStartLocator = Math.abs(startPercent - newStartPercent) <= MIN_LOOP_PERCENT;
-    if (e.shiftKey && !(startPercent === 0 && endPercent === 1)) {
-      const midX = (startPercent + ((endPercent - startPercent) * 0.5)) * width;
+    const mouseDownPercent = x / width;
+    const isRemovingStartLocator = Math.abs(startPercent - mouseDownPercent) <= MIN_LOOP_PERCENT;
+    const midX = (startPercent + ((endPercent - startPercent) * 0.5)) * width;
+    if (e.shiftKey && startPercent !== 0 && endPercent === 1) {
       if (x >= midX) {
         this.setState({
           isMouseDown: true,
           shiftLocator: Locator.End,
-          playbackLocators: {
+          loopLocators: {
             startPercent,
-            endPercent: x / width,
+            endPercent: mouseDownPercent,
           },
         });
       } else {
         this.setState({
           isMouseDown: true,
           shiftLocator: Locator.Start,
-          playbackLocators: {
-            startPercent: x / width,
+          loopLocators: {
+            startPercent: mouseDownPercent,
+            endPercent: startPercent,
+          },
+        });
+      }
+    } else if (e.shiftKey && startPercent !== 0 && endPercent !== 1) {
+      if (x >= midX) {
+        this.setState({
+          isMouseDown: true,
+          shiftLocator: Locator.End,
+          loopLocators: {
+            startPercent,
+            endPercent: mouseDownPercent,
+          },
+        });
+      } else {
+        this.setState({
+          isMouseDown: true,
+          shiftLocator: Locator.Start,
+          loopLocators: {
+            startPercent: mouseDownPercent,
             endPercent,
           },
         });
@@ -155,22 +178,23 @@ class Track extends React.Component<TrackProps, Partial<TrackState>> {
       this.setState({
         isMouseDown: true,
         shiftLocator: null,
-        playbackLocators: {
-          startPercent: isRemovingStartLocator ? 0 : newStartPercent,
+        loopLocators: {
+          startPercent: isRemovingStartLocator ? 0 : mouseDownPercent,
           endPercent: 1,
         },
       }, () => isRemovingStartLocator && this.stopPlayback());
     }
   }
+
   private onMouseMove = (e: MouseEvent) => {
-    const { isMouseDown, shiftLocator, playbackLocators: { startPercent, endPercent } } = this.state;
+    const { shiftLocator, loopLocators: { startPercent, endPercent }, isMouseDown } = this.state;
     if (isMouseDown) {
       const { width } = this.props;
       const { left } = this.canvas.getBoundingClientRect();
       const x = e.clientX - left;
       if (shiftLocator !== null) {
         this.setState({
-          playbackLocators: {
+          loopLocators: {
             startPercent: shiftLocator === Locator.Start ? x / width : startPercent,
             endPercent: shiftLocator === Locator.End ? x / width : endPercent,
           },
@@ -182,26 +206,31 @@ class Track extends React.Component<TrackProps, Partial<TrackState>> {
   }
 
   private onMouseUp = (e: MouseEvent) => {
-    const { playbackLocators, isMouseDown } = this.state;
-    if (playbackLocators && isMouseDown) {
-      this.handleMouse(e.clientX, playbackLocators.startPercent, true);
+    const { loopLocators, isMouseDown } = this.state;
+    if (loopLocators && isMouseDown) {
+      this.handleMouse(e.clientX, loopLocators.startPercent, true);
     }
   }
 
   private handleMouse = (clientX: number, startPercent: number, isMouseUp = false) => {
-    const { width } = this.props;
-    const { shiftLocator } = this.state;
+    const { width, player } = this.props;
+    const { shiftLocator, loopLocators: { endPercent: originalEndPercent } } = this.state;
+    if (startPercent === 0 && originalEndPercent === 1) { return; }
     const { left } = this.canvas.getBoundingClientRect();
     const x = clientX - left;
     const endPercent = x / width;
     this.setState({
       isMouseDown: !isMouseUp,
       shiftLocator: isMouseUp ? null : shiftLocator,
-      playbackLocators: {
+      loopLocators: {
         startPercent,
-        endPercent: Math.abs(startPercent - endPercent) > MIN_LOOP_PERCENT ? endPercent : 1,
+        endPercent: !shiftLocator || shiftLocator !== Locator.Start ? (Math.abs(startPercent - endPercent) > MIN_LOOP_PERCENT ? endPercent : 1) : originalEndPercent,
       },
-    }, () => this.isPlaying && isMouseUp && this.startPlayback());
+    }, () => {
+      if (this.isPlaying && isMouseUp) {
+        this.updatePlayback();
+      }
+    });
   }
 
   private onKeyDown = (e: KeyboardEvent) => {
@@ -245,17 +274,15 @@ class Track extends React.Component<TrackProps, Partial<TrackState>> {
     window.removeEventListener('mousemove', this.onMouseMove);
   }
 
-  private zoomIn = (zoomLocators: Locators) => {
-    this.setChannelData(this.props.audioBuffer, zoomLocators);
-  }
+  private zoomIn = (zoomLocators: Locators) => this.setChannelData(this.props.audioBuffer, zoomLocators);
 
   private zoomOut = () => {
     if (this.state.zoomLocators === DEFAULT_LOCATORS) { return; }
-    const playbackLocators = this.getTrueLocators(this.state.playbackLocators);
-    this.setChannelData(this.props.audioBuffer, DEFAULT_LOCATORS, playbackLocators, playbackLocators);
+    const loopLocators = this.getTrueLocators(this.state.loopLocators);
+    this.setChannelData(this.props.audioBuffer, DEFAULT_LOCATORS, loopLocators, loopLocators);
   }
 
-  private setChannelData = (audioBuffer: AudioBuffer, zoomLocators: Locators = DEFAULT_LOCATORS, playbackLocators: Locators = DEFAULT_LOCATORS, lastPlaybackLocators: Locators = DEFAULT_LOCATORS) => {
+  private setChannelData = (audioBuffer: AudioBuffer, zoomLocators: Locators = DEFAULT_LOCATORS, loopLocators: Locators = DEFAULT_LOCATORS, lastLoopLocators: Locators = DEFAULT_LOCATORS) => {
     const getSubArray = (channelData: Float32Array): Float32Array => channelData.slice(
       Math.round(channelData.length * zoomLocators.startPercent),
       Math.round(channelData.length * zoomLocators.endPercent),
@@ -269,8 +296,8 @@ class Track extends React.Component<TrackProps, Partial<TrackState>> {
       lowPeak,
       highPeak,
       zoomLocators,
-      playbackLocators,
-      lastPlaybackLocators,
+      loopLocators,
+      lastLoopLocators,
     });
   }
 
@@ -386,9 +413,9 @@ class Track extends React.Component<TrackProps, Partial<TrackState>> {
   private getPlaybackRenderInfo = (): PlaybackRenderInfo => {
     const { player, width } = this.props;
     if (!this.isPlaying) { return null; }
-    const { lastPlaybackLocators, zoomLocators: { startPercent: zoomStartPercent, endPercent: zoomEndPercent } } = this.state;
-    const { startPercent: trueLocatorStartPercent, endPercent: trueLocatorEndPercent } = this.getTrueLocators(lastPlaybackLocators);
-    const { startPercent: relativeLocatorStartPercent } = this.getRelativeLocators(lastPlaybackLocators);
+    const { lastLoopLocators, zoomLocators: { startPercent: zoomStartPercent, endPercent: zoomEndPercent } } = this.state;
+    const { startPercent: trueLocatorStartPercent, endPercent: trueLocatorEndPercent } = this.getTrueLocators(lastLoopLocators);
+    const { startPercent: relativeLocatorStartPercent } = this.getRelativeLocators(lastLoopLocators);
     const zoomFactor = 1 / (zoomEndPercent - zoomStartPercent);
     const progressPercent = (player.playbackProgressSeconds + this.additionalPlaybackProgressSeconds) / player.buffer.duration;
     const progressWidth = (width * progressPercent) % ((width * trueLocatorEndPercent) - (width * trueLocatorStartPercent));
@@ -397,7 +424,7 @@ class Track extends React.Component<TrackProps, Partial<TrackState>> {
     return { startPixel, endPixel, zoomFactor };
   }
 
-  private getRelativeLocators = ({ startPercent: locator1Percent, endPercent: locator2Percent }: Locators = this.state.playbackLocators): Locators => {
+  private getRelativeLocators = ({ startPercent: locator1Percent, endPercent: locator2Percent }: Locators = this.state.loopLocators): Locators => {
     const startPercent = (locator2Percent === null) || (locator1Percent <= locator2Percent) ? locator1Percent : locator2Percent;
     const endPercent = startPercent === locator1Percent ? locator2Percent : locator1Percent;
     return { startPercent, endPercent };
@@ -410,19 +437,21 @@ class Track extends React.Component<TrackProps, Partial<TrackState>> {
     return { startPercent: trueStart, endPercent: trueEnd };
   }
 
-  private startPlayback = (continuePlayback = false) => {
-    const lastPlaybackLocators = this.getRelativeLocators();
-    const { player } = this.props;
-    this.setState({ lastPlaybackLocators }, () => {
-      if (this.isPlaying && continuePlayback) {
-        player.setLoopFromLocators(this.getTrueLocators(lastPlaybackLocators));
-      } else {
-        player.play(this.getTrueLocators(lastPlaybackLocators));
-        if (!this.isPlaying) {
-          this.isPlaying = true;
-          window.requestAnimationFrame(this.animatePlayback);
-        }
+  private startPlayback = () => {
+    this.updatePlayback(() => {
+      this.props.player.play();
+      if (!this.isPlaying) {
+        this.isPlaying = true;
+        window.requestAnimationFrame(this.animatePlayback);
       }
+    });
+  }
+
+  private updatePlayback = (callback: () => void = Constant.NO_OP) => {
+    const lastLoopLocators = this.getRelativeLocators();
+    this.setState({ lastLoopLocators }, () => {
+      this.props.player.setLoop(this.getTrueLocators(lastLoopLocators));
+      callback();
     });
   }
 

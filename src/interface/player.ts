@@ -27,10 +27,10 @@ export class Player {
     // PUBLIC 
 
     public audioContext: AudioContext = null;
-    public startedAt: number = null;
+    public playbackStartedAt: number = null;
     public playbackProgressSeconds: number = null;
-    public loopStartPercent: number;
-    public loopEndPercent: number;
+    public loopStartPercent: number = 0;
+    public loopEndPercent: number = 1;
 
     public get buffer() {
         return this.internalBuffer;
@@ -67,7 +67,7 @@ export class Player {
     public setBuffer = (buffer: AudioBuffer) => {
         this.internalBuffer = buffer;
         this.audioBufferChangedListeners.forEach(listener => listener(buffer));
-        if (this.startedAt !== null) {
+        if (this.playbackStartedAt !== null) {
             this.scriptNode.disconnect(this.gainNode);
             this.gainNode.disconnect(this.audioContext.destination);
             this.stop();
@@ -97,31 +97,35 @@ export class Player {
         };
     }
 
-    public play = ({ startPercent, endPercent }: Locators) => {
+    public play = () => {
+        this.phaseVocoder.position = this.buffer.length * this.loopStartPercent;
+        this.playbackProgressSeconds = 0;
+        if (this.playbackStartedAt === null) {
+            this.playbackStartedAt = this.audioContext.currentTime;
+        }
+    }
+
+    public setLoop = ({ startPercent, endPercent }: Locators) => {
+        const prevStartPercent = this.loopStartPercent;
         this.loopStartPercent = startPercent;
         this.loopEndPercent = endPercent;
-        this.phaseVocoder.position = this.buffer.length * startPercent;
-        this.startedAt = this.audioContext.currentTime;
+        if (this.playbackStartedAt !== null && prevStartPercent !== startPercent) {
+            this.phaseVocoder.position = this.buffer.length * startPercent;
+            this.playbackProgressSeconds = 0;
+        }
     }
 
     public stop = () => {
-        this.startedAt = null;
+        this.playbackStartedAt = null;
         this.loopStartPercent = null;
         this.loopEndPercent = null;
-    }
-
-    public setLoopFromLocators = ({ startPercent, endPercent }: Locators) => {
-        if (this.startedAt !== null) {
-            const startSeconds = this.buffer.duration * startPercent;
-            const endSeconds = this.buffer.duration * endPercent;
-            this.phaseVocoder.position = this.buffer.length * startPercent;
-        }
+        this.playbackProgressSeconds = null;
     }
 
     // PRIVATE 
 
     private onAudioProcess = ({ outputBuffer }: AudioProcessingEvent) => {
-        if (this.startedAt !== null) {
+        if (this.playbackStartedAt !== null) {
             this.playbackProgressSeconds = (this.playbackProgressSeconds == null ? 0 : this.playbackProgressSeconds) + (outputBuffer.length / this.audioContext.sampleRate) / this.alpha;
             this.phaseVocoder.process(outputBuffer);
         } else {
