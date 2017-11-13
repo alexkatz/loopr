@@ -55,13 +55,11 @@ export class Player {
     }
 
     public get loopStartSeconds(): number {
-        if (!this.loopStartPercent) { return null; }
-        return this.loopStartPercent * this.buffer.duration;
+        return (this.loopStartPercent || 0) * this.buffer.duration;
     }
 
     public get loopEndSeconds(): number {
-        if (!this.loopEndPercent) { return null; }
-        return this.loopEndPercent * this.buffer.duration;
+        return (this.loopEndPercent || 1) * this.buffer.duration;
     }
 
     public setBuffer = (buffer: AudioBuffer) => {
@@ -107,8 +105,8 @@ export class Player {
 
     public setLoop = ({ startPercent, endPercent }: Locators) => {
         const prevStartPercent = this.loopStartPercent;
-        this.loopStartPercent = startPercent;
-        this.loopEndPercent = endPercent;
+        this.loopStartPercent = Math.min(startPercent, endPercent);
+        this.loopEndPercent = Math.max(startPercent, endPercent);
         if (this.playbackStartedAt !== null && prevStartPercent !== startPercent) {
             this.phaseVocoder.position = this.buffer.length * startPercent;
             this.playbackProgressSeconds = 0;
@@ -117,8 +115,6 @@ export class Player {
 
     public stop = () => {
         this.playbackStartedAt = null;
-        this.loopStartPercent = null;
-        this.loopEndPercent = null;
         this.playbackProgressSeconds = null;
     }
 

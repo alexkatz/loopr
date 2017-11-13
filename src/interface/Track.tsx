@@ -47,7 +47,7 @@ interface TrackState {
   rightChannelData: Float32Array;
   lowPeak: number;
   highPeak: number;
-  lastLoopLocators: Locators; // TODO: draw these too, so locators stay present even if user alters locators during playback...
+  // lastLoopLocators: Locators; // TODO: draw these too, so locators stay present even if user alters locators during playback...
   zoomLocators: Locators;
   loopLocators: Locators;
   shiftLocator: Locator;
@@ -101,6 +101,10 @@ class Track extends React.Component<TrackProps, Partial<TrackState>> {
     if (this.state.zoomLocators !== prevState.zoomLocators || this.props.width !== prevProps.width) {
       this.setState({ waveformRects: this.getWaveformRects() }, this.draw);
       return;
+    }
+
+    if (this.state.loopLocators !== prevState.loopLocators) {
+      this.props.player.setLoop(this.getTrueLocators(this.state.loopLocators));
     }
 
     if (!this.isPlaying) {
@@ -218,18 +222,12 @@ class Track extends React.Component<TrackProps, Partial<TrackState>> {
     if (startPercent === 0 && originalEndPercent === 1) { return; }
     const { left } = this.canvas.getBoundingClientRect();
     const x = clientX - left;
-    const endPercent = x / width;
+    const calculatedEndPercent = x / width;
+    const endPercent = !shiftLocator || shiftLocator !== Locator.Start ? (Math.abs(startPercent - calculatedEndPercent) > MIN_LOOP_PERCENT ? calculatedEndPercent : 1) : originalEndPercent;
     this.setState({
       isMouseDown: !isMouseUp,
       shiftLocator: isMouseUp ? null : shiftLocator,
-      loopLocators: {
-        startPercent,
-        endPercent: !shiftLocator || shiftLocator !== Locator.Start ? (Math.abs(startPercent - endPercent) > MIN_LOOP_PERCENT ? endPercent : 1) : originalEndPercent,
-      },
-    }, () => {
-      if (this.isPlaying && isMouseUp) {
-        this.updatePlayback();
-      }
+      loopLocators: this.getRelativeLocators({ startPercent, endPercent }),
     });
   }
 
@@ -259,6 +257,7 @@ class Track extends React.Component<TrackProps, Partial<TrackState>> {
     const playbackRenderInfo = this.getPlaybackRenderInfo();
     this.drawWaveform(context, playbackRenderInfo);
     this.drawLocators(context);
+    this.drawTimeIndicators(context);
     if (playbackRenderInfo !== null) {
       this.drawPlaybackProgress(context, playbackRenderInfo);
     }
@@ -279,10 +278,10 @@ class Track extends React.Component<TrackProps, Partial<TrackState>> {
   private zoomOut = () => {
     if (this.state.zoomLocators === DEFAULT_LOCATORS) { return; }
     const loopLocators = this.getTrueLocators(this.state.loopLocators);
-    this.setChannelData(this.props.audioBuffer, DEFAULT_LOCATORS, loopLocators, loopLocators);
+    this.setChannelData(this.props.audioBuffer, DEFAULT_LOCATORS, loopLocators);
   }
 
-  private setChannelData = (audioBuffer: AudioBuffer, zoomLocators: Locators = DEFAULT_LOCATORS, loopLocators: Locators = DEFAULT_LOCATORS, lastLoopLocators: Locators = DEFAULT_LOCATORS) => {
+  private setChannelData = (audioBuffer: AudioBuffer, zoomLocators: Locators = DEFAULT_LOCATORS, loopLocators: Locators = DEFAULT_LOCATORS) => {
     const getSubArray = (channelData: Float32Array): Float32Array => channelData.slice(
       Math.round(channelData.length * zoomLocators.startPercent),
       Math.round(channelData.length * zoomLocators.endPercent),
@@ -297,7 +296,6 @@ class Track extends React.Component<TrackProps, Partial<TrackState>> {
       highPeak,
       zoomLocators,
       loopLocators,
-      lastLoopLocators,
     });
   }
 
@@ -387,6 +385,23 @@ class Track extends React.Component<TrackProps, Partial<TrackState>> {
     context.fillRect(startPixel, 0, (endPixel - startPixel) * zoomFactor, this.props.height);
   }
 
+  private drawTimeIndicators = (context: CanvasRenderingContext2D) => {
+    const { width, height, player: { playbackProgressSeconds, loopStartSeconds, loopEndSeconds } } = this.props;
+    context.fillStyle = Color.DARK_BLUE;
+    context.textBaseline = 'bottom';
+    context.textAlign = 'right';
+    context.font = '20px \'Open Sans\', sans-serif';
+    const playbackSeconds = loopStartSeconds + (playbackProgressSeconds === null ? 0 : playbackProgressSeconds + this.additionalPlaybackProgressSeconds);
+    const playbackText = `${playbackSeconds.toFixed(2)}s`;
+    context.fillText(playbackText, width - Constant.PADDING, height - Constant.PADDING);
+    if (loopStartSeconds !== null && loopEndSeconds !== null) {
+      context.textAlign = 'left';
+      const loopStartText = `${loopStartSeconds.toFixed(2)}s`;
+      const loopEndText = `${loopEndSeconds.toFixed(2)}s`;
+      context.fillText(`${loopStartText}   ${loopEndText}`, Constant.PADDING, height - Constant.PADDING);
+    }
+  }
+
   private updateIntraFrameInfo = () => {
     const { player } = this.props;
     if (this.lastProgressSeconds && this.lastRenderTime) {
@@ -413,9 +428,9 @@ class Track extends React.Component<TrackProps, Partial<TrackState>> {
   private getPlaybackRenderInfo = (): PlaybackRenderInfo => {
     const { player, width } = this.props;
     if (!this.isPlaying) { return null; }
-    const { lastLoopLocators, zoomLocators: { startPercent: zoomStartPercent, endPercent: zoomEndPercent } } = this.state;
-    const { startPercent: trueLocatorStartPercent, endPercent: trueLocatorEndPercent } = this.getTrueLocators(lastLoopLocators);
-    const { startPercent: relativeLocatorStartPercent } = this.getRelativeLocators(lastLoopLocators);
+    const { loopLocators, zoomLocators: { startPercent: zoomStartPercent, endPercent: zoomEndPercent } } = this.state;
+    const { startPercent: trueLocatorStartPercent, endPercent: trueLocatorEndPercent } = this.getTrueLocators(loopLocators);
+    const { startPercent: relativeLocatorStartPercent } = this.getRelativeLocators(loopLocators);
     const zoomFactor = 1 / (zoomEndPercent - zoomStartPercent);
     const progressPercent = (player.playbackProgressSeconds + this.additionalPlaybackProgressSeconds) / player.buffer.duration;
     const progressWidth = (width * progressPercent) % ((width * trueLocatorEndPercent) - (width * trueLocatorStartPercent));
@@ -424,9 +439,9 @@ class Track extends React.Component<TrackProps, Partial<TrackState>> {
     return { startPixel, endPixel, zoomFactor };
   }
 
-  private getRelativeLocators = ({ startPercent: locator1Percent, endPercent: locator2Percent }: Locators = this.state.loopLocators): Locators => {
-    const startPercent = (locator2Percent === null) || (locator1Percent <= locator2Percent) ? locator1Percent : locator2Percent;
-    const endPercent = startPercent === locator1Percent ? locator2Percent : locator1Percent;
+  private getRelativeLocators = ({ startPercent: l1, endPercent: l2 }: Locators = this.state.loopLocators): Locators => {
+    const startPercent = Math.min(l1, l2);
+    const endPercent = Math.max(l1, l2);
     return { startPercent, endPercent };
   }
 
@@ -438,21 +453,11 @@ class Track extends React.Component<TrackProps, Partial<TrackState>> {
   }
 
   private startPlayback = () => {
-    this.updatePlayback(() => {
-      this.props.player.play();
-      if (!this.isPlaying) {
-        this.isPlaying = true;
-        window.requestAnimationFrame(this.animatePlayback);
-      }
-    });
-  }
-
-  private updatePlayback = (callback: () => void = Constant.NO_OP) => {
-    const lastLoopLocators = this.getRelativeLocators();
-    this.setState({ lastLoopLocators }, () => {
-      this.props.player.setLoop(this.getTrueLocators(lastLoopLocators));
-      callback();
-    });
+    this.props.player.play();
+    if (!this.isPlaying) {
+      this.isPlaying = true;
+      window.requestAnimationFrame(this.animatePlayback);
+    }
   }
 
   private stopPlayback = () => {

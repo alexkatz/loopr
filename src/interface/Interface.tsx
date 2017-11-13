@@ -4,8 +4,7 @@ import { Color } from '../shared/colors';
 import { Constant } from '../shared/constants';
 import { Track } from './Track';
 import { AlphaSlider } from './AlphaSlider';
-
-
+import { Style } from '../shared/styles';
 
 interface InterfaceProps {
   width: number;
@@ -44,6 +43,7 @@ class Interface extends React.Component<InterfaceProps, InterfaceState> {
             display: 'flex',
             alignItems: 'center',
             paddingLeft: Constant.PADDING,
+            ...Style.NO_SELECT,
           }}
         >
           AudioStretcher
