@@ -1,5 +1,6 @@
 import { Locators } from './Track';
 import BufferedPV from '../phaseVocoder/Echo66PhaseVocoder';
+import { Constant } from '../shared/constants';
 
 const FRAME_SIZE = 2048;
 const BUFFER_SIZE = 4096;
@@ -104,11 +105,13 @@ export class Player {
     }
 
     public setLoop = ({ startPercent, endPercent }: Locators) => {
+        const ensuredStartPercent = Constant.ENSURE_RANGE_INCLUSIVE(startPercent);
+        const ensuredEndPercent = Constant.ENSURE_RANGE_INCLUSIVE(endPercent);
         const prevStartPercent = this.loopStartPercent;
-        this.loopStartPercent = Math.min(startPercent, endPercent);
-        this.loopEndPercent = Math.max(startPercent, endPercent);
-        if (this.playbackStartedAt !== null && prevStartPercent !== startPercent) {
-            this.phaseVocoder.position = this.buffer.length * startPercent;
+        this.loopStartPercent = Math.min(ensuredStartPercent, ensuredEndPercent);
+        this.loopEndPercent = Math.max(ensuredStartPercent, ensuredEndPercent);
+        if (this.playbackStartedAt !== null && prevStartPercent !== ensuredStartPercent) {
+            this.phaseVocoder.position = this.buffer.length * ensuredStartPercent;
             this.playbackProgressSeconds = 0;
         }
     }

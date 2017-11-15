@@ -94,9 +94,7 @@ class AlphaSlider extends React.Component<AlphaSliderProps, AlphaSliderState> {
     const { width, onAlphaChange } = this.props;
     const { left } = this.containerDiv.getBoundingClientRect();
     const x = e.clientX - left;
-    let percent = x / width;
-    if (percent > 1) { percent = 1; }
-    if (percent < 0) { percent = 0; }
+    const percent = Constant.ENSURE_RANGE_INCLUSIVE(x / width);
     let alpha = Constant.GET_ALPHA_FROM_SLIDER_PERCENT(percent);
     if (e.shiftKey) {
       const alphaPercent = Constant.GET_ALPHA_PERCENT_FROM_SLIDER_PERCENT(percent);
