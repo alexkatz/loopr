@@ -82,10 +82,14 @@ export class Player {
         this.scriptNode.onaudioprocess = this.onAudioProcess;
     }
 
-    public setAudioFile = (file: File) => {
+    public setAudioFromFile = (file: File) => {
         const fileReader = new FileReader();
         fileReader.onloadend = async () => this.setBuffer(await this.audioContext.decodeAudioData(fileReader.result));
         fileReader.readAsArrayBuffer(file);
+    }
+
+    public setAudioFromBuffer = async (buffer: ArrayBuffer) => {
+        this.setBuffer(await this.audioContext.decodeAudioData(buffer));
     }
 
     public onAudioBufferChanged = (listener: AudioBufferChangedHandler): RemoveListener => {

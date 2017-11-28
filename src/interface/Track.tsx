@@ -102,11 +102,8 @@ class Track extends React.Component<TrackProps, Partial<TrackState>> {
       return;
     }
 
-    if (this.state.loopLocators !== prevState.loopLocators) {
+    if (!Constant.LOCATORS_ARE_EQUAL(this.state.loopLocators, prevState.loopLocators)) {
       this.props.player.setLoop(this.getTrueLocators(this.getRelativeLocators(this.state.loopLocators)));
-    }
-
-    if (!this.isPlaying) {
       this.draw();
     }
   }
@@ -226,7 +223,7 @@ class Track extends React.Component<TrackProps, Partial<TrackState>> {
     this.setState({
       mouseDownX: !isMouseUp ? x : null,
       shiftLocator: isMouseUp ? null : shiftLocator,
-      loopLocators: { startPercent, endPercent }, // this.getRelativeLocators({ startPercent, endPercent }),
+      loopLocators: { startPercent, endPercent },
     });
   }
 
@@ -335,20 +332,21 @@ class Track extends React.Component<TrackProps, Partial<TrackState>> {
   private getWaveformRects = (): WaveformRect[] => {
     const { leftChannelData, rightChannelData, lowPeak, highPeak } = this.state;
     const { width, height } = this.props;
-    const pixelCount = width * 2;
+    const WAVEFORM_RESOLUTION_FACTOR = 1;
+    const pixelCount = width / WAVEFORM_RESOLUTION_FACTOR;
     const peak = Math.max(Math.abs(lowPeak), highPeak);
     const NORMALIZE_FACTOR = (rightChannelData ? height * 0.25 : height * 0.5) / peak;
     const DECIMATION_FACTOR = leftChannelData.length / pixelCount;
     const waveformRects: WaveformRect[] = [];
 
     const drawChannel = (channelData: Float32Array, midY: number) => {
-      for (let i = 0; i <= width; i += 0.5) {
-        const sampleIndex = Math.round((i * 2) * DECIMATION_FACTOR);
+      for (let i = 0; i <= width; i += WAVEFORM_RESOLUTION_FACTOR) {
+        const sampleIndex = Math.round((i / WAVEFORM_RESOLUTION_FACTOR) * DECIMATION_FACTOR);
         const amplitude = Math.abs(channelData[sampleIndex] * NORMALIZE_FACTOR);
         waveformRects.push({
           x: i,
           y: midY - amplitude,
-          width: 0.5,
+          width: WAVEFORM_RESOLUTION_FACTOR,
           height: amplitude * 2,
           sampleIndex,
         });

@@ -13,6 +13,11 @@ interface HomeState {
     audioBuffer: AudioBuffer;
 }
 
+interface ReadResult {
+    done: boolean;
+    value?: any;
+}
+
 class Home extends React.Component<any, HomeState> {
     private player = new Player();
     private removeListeners: RemoveListener[] = [];
@@ -32,6 +37,32 @@ class Home extends React.Component<any, HomeState> {
         this.removeListeners.forEach(removeListener => removeListener());
     }
 
+    // public async componentDidMount() {
+    //     const result = await Constant.GET_YOUTUBE_AUDIO('https://www.youtube.com/watch?v=le0BLAEO93g');
+    //     if (result) {
+    //         const reader = result.getReader();
+    //         let readResult: ReadResult = { done: false };
+    //         const arrays: Uint8Array[] = [];
+    //         let length = 0;
+    //         while (!readResult.done) {
+    //             readResult = await reader.read();
+    //             if (!readResult.done) {
+    //                 const array = readResult.value;
+    //                 arrays.push(array);
+    //                 length += array.length;
+    //             }
+    //         }
+
+    //         const array = new Uint8Array(length);
+    //         arrays.reduce((length, arr) => {
+    //             array.set(arr, length);
+    //             return length += arr.length;
+    //         }, 0);
+
+    //         this.player.setAudioFromBuffer(array.buffer);
+    //     }
+    // }
+
     public render() {
         const { audioBuffer } = this.state;
         return (
@@ -45,8 +76,7 @@ class Home extends React.Component<any, HomeState> {
                         }}
                     >
                         <Dropzone
-                            onDrop={([file]) => this.player.setAudioFile(file)}
-                            accept={'audio/x-m4a, audio/mp3, audio/x-wav'}
+                            onDrop={([file]) => this.player.setAudioFromFile(file)}
                             disableClick={audioBuffer != null}
                             style={{
                                 width: '100%',
